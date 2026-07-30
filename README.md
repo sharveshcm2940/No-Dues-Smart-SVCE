@@ -115,7 +115,7 @@ The server will initialize `database.sqlite`, execute schema seeds, and start on
 cd client
 npm install
 npm run dev
-
+```
 The client dev server will start on `http://localhost:3000`.
 
 ---

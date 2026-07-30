@@ -33,6 +33,8 @@ exports.login = async (req, res) => {
       profileData = await getOne('SELECT * FROM faculty_advisors WHERE user_id = ?', [user.id]);
     } else if (user.role === 'hod') {
       profileData = await getOne('SELECT * FROM hod_profile WHERE user_id = ?', [user.id]);
+    } else if (user.role === 'dpc') {
+      profileData = await getOne('SELECT * FROM dpc_profile WHERE user_id = ?', [user.id]);
     }
 
     const token = jwt.sign(
@@ -82,6 +84,8 @@ exports.getCurrentUser = async (req, res) => {
       profileData = await getOne('SELECT * FROM faculty_advisors WHERE user_id = ?', [user.id]);
     } else if (user.role === 'hod') {
       profileData = await getOne('SELECT * FROM hod_profile WHERE user_id = ?', [user.id]);
+    } else if (user.role === 'dpc') {
+      profileData = await getOne('SELECT * FROM dpc_profile WHERE user_id = ?', [user.id]);
     }
 
     return res.json({

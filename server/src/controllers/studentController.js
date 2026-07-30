@@ -93,7 +93,28 @@ exports.getStudentDashboard = async (req, res) => {
 exports.submitNoDuesRequest = async (req, res) => {
   try {
     const regNo = req.user.username;
-    const { forceNew, remarks } = req.body || {};
+    const { 
+      forceNew, 
+      remarks,
+      career_option,
+      company_name,
+      job_designation,
+      ctc_package,
+      offer_letter_url,
+      higher_college_name,
+      higher_degree,
+      higher_app_form_url,
+      higher_scorecard_url,
+      higher_contact,
+      exam_name,
+      exam_reg_no,
+      admit_card_url,
+      exam_details,
+      startup_name,
+      business_idea,
+      business_details,
+      pitch_deck_url
+    } = req.body || {};
 
     // Check if student has active request
     const existingReq = await getOne(
@@ -102,7 +123,6 @@ exports.submitNoDuesRequest = async (req, res) => {
     );
 
     if (existingReq) {
-      // If forceNew is requested or student wants to replace/re-submit
       await query(`DELETE FROM nodues_stages WHERE request_id = ?`, [existingReq.id]);
       await query(`DELETE FROM nodues_requests WHERE id = ?`, [existingReq.id]);
     }
@@ -117,9 +137,20 @@ exports.submitNoDuesRequest = async (req, res) => {
     const reqNum = `NDR-2026-${String(nextNum).padStart(3, '0')}-${Date.now().toString().slice(-4)}`;
 
     const newReq = await query(
-      `INSERT INTO nodues_requests (request_number, register_number, student_name, id_card_number, department, year, overall_status, progress_percentage, current_stage)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 16, 'Finance']
+      `INSERT INTO nodues_requests (
+        request_number, register_number, student_name, id_card_number, department, year, overall_status, progress_percentage, current_stage,
+        career_option, company_name, job_designation, ctc_package, offer_letter_url,
+        higher_college_name, higher_degree, higher_app_form_url, higher_scorecard_url, higher_contact,
+        exam_name, exam_reg_no, admit_card_url, exam_details,
+        startup_name, business_idea, business_details, pitch_deck_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 16, 'Finance',
+        career_option || null, company_name || null, job_designation || null, ctc_package || null, offer_letter_url || null,
+        higher_college_name || null, higher_degree || null, higher_app_form_url || null, higher_scorecard_url || null, higher_contact || null,
+        exam_name || null, exam_reg_no || null, admit_card_url || null, exam_details || null,
+        startup_name || null, business_idea || null, business_details || null, pitch_deck_url || null
+      ]
     );
 
     const stages = [
@@ -127,7 +158,7 @@ exports.submitNoDuesRequest = async (req, res) => {
       { name: 'Central Library', order: 2, status: 'Approved', approved_by: 'Central Library Portal', remarks: 'Central Library clearance granted.' },
       { name: 'Department Library', order: 3, status: 'Pending', approved_by: null, remarks: remarks || 'Under verification by IT Dept Library Staff.' },
       { name: 'Faculty Advisor', order: 4, status: 'Pending', approved_by: null, remarks: 'Awaiting Department Library approval.' },
-      { name: 'DPC', order: 5, status: 'Pending', approved_by: null, remarks: 'Awaiting prior stage approvals.' },
+      { name: 'DPC', order: 5, status: 'Pending', approved_by: null, remarks: career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting prior stage approvals.' },
       { name: 'HOD', order: 6, status: 'Pending', approved_by: null, remarks: 'Final approval pending.' }
     ];
 

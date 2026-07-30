@@ -6,6 +6,7 @@ const studentController = require('../controllers/studentController');
 const libraryController = require('../controllers/libraryController');
 const faController = require('../controllers/faController');
 const hodController = require('../controllers/hodController');
+const dpcController = require('../controllers/dpcController');
 
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
@@ -186,6 +187,21 @@ router.post(
   authenticateToken,
   authorizeRole(['hod']),
   hodController.processHODAction
+);
+
+// Department Placement Coordinator Routes (Role: dpc)
+router.get(
+  '/dpc/dashboard',
+  authenticateToken,
+  authorizeRole(['dpc']),
+  dpcController.getDPCDashboard
+);
+
+router.post(
+  '/dpc/process-nodues',
+  authenticateToken,
+  authorizeRole(['dpc']),
+  dpcController.processDPCAction
 );
 
 module.exports = router;

@@ -58,6 +58,14 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
+  const dpcNav = [
+    { id: 'dashboard', label: 'DPC Overview', icon: LayoutDashboard },
+    { id: 'approvals', label: 'Stage 5 Career Desk', icon: FileCheck2 },
+    { id: 'career_roster', label: 'Student Career Roster', icon: Users },
+    { id: 'reports', label: 'Placement Analytics', icon: FileText },
+    { id: 'settings', label: 'Settings', icon: Settings },
+  ];
+
   let navItems = studentNav;
   let sectionLabel = 'Student Services';
 
@@ -70,6 +78,9 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
   } else if (role === 'hod') {
     navItems = hodNav;
     sectionLabel = 'HOD Executive Desk';
+  } else if (role === 'dpc') {
+    navItems = dpcNav;
+    sectionLabel = 'Placement Coordinator Desk';
   }
 
   return (

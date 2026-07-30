@@ -31,6 +31,8 @@ export const Header = ({ notifications = [], activeTab, setActiveTab }) => {
         return { label: 'Faculty Advisor (FA)', icon: Award, color: 'bg-amber-50 text-amber-800 border-amber-200' };
       case 'hod':
         return { label: 'Head of Dept (HOD)', icon: Crown, color: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
+      case 'dpc':
+        return { label: 'Placement Coordinator (DPC)', icon: Building2, color: 'bg-blue-50 text-blue-800 border-blue-200' };
       default:
         return { label: 'SVCE User', icon: User, color: 'bg-slate-100 text-slate-700' };
     }

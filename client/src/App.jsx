@@ -5,6 +5,7 @@ import StudentDashboard from './pages/StudentDashboard';
 import LibraryDashboard from './pages/LibraryDashboard';
 import FADashboard from './pages/FADashboard';
 import HODDashboard from './pages/HODDashboard';
+import DPCDashboard from './pages/DPCDashboard';
 
 const MainAppContent = () => {
   const { user, isAuthenticated } = useAuth();
@@ -27,6 +28,10 @@ const MainAppContent = () => {
 
   if (user.role === 'hod') {
     return <HODDashboard />;
+  }
+
+  if (user.role === 'dpc') {
+    return <DPCDashboard />;
   }
 
   return <LoginPage />;

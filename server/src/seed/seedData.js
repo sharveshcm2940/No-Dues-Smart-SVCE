@@ -2,7 +2,7 @@ const { db, query } = require('../config/db');
 const bcrypt = require('bcryptjs');
 
 async function seedDatabase() {
-  console.log('Initializing SVCE database schema with complete 3rd Year B.Tech IT advisee rosters (98 Students across 4 Faculty Advisors)...');
+  console.log('Initializing SVCE database schema with 4th Year Career Pathways & DPC Portal integration...');
 
   // Drop old tables to apply fresh seed data cleanly
   await query('DROP TABLE IF EXISTS users');
@@ -10,6 +10,7 @@ async function seedDatabase() {
   await query('DROP TABLE IF EXISTS library_staff');
   await query('DROP TABLE IF EXISTS faculty_advisors');
   await query('DROP TABLE IF EXISTS hod_profile');
+  await query('DROP TABLE IF EXISTS dpc_profile');
   await query('DROP TABLE IF EXISTS books');
   await query('DROP TABLE IF EXISTS borrow_records');
   await query('DROP TABLE IF EXISTS nodues_requests');
@@ -24,7 +25,7 @@ async function seedDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('student', 'library_staff', 'faculty_advisor', 'hod')),
+      role TEXT NOT NULL CHECK(role IN ('student', 'library_staff', 'faculty_advisor', 'hod', 'dpc')),
       email TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
@@ -42,9 +43,9 @@ async function seedDatabase() {
       college_name TEXT DEFAULT 'Sri Venkateswara College of Engineering',
       department TEXT DEFAULT 'Information Technology',
       programme TEXT DEFAULT 'B.Tech IT',
-      batch TEXT DEFAULT '2023-2027',
-      year TEXT DEFAULT 'III Year',
-      semester TEXT DEFAULT 'Semester V',
+      batch TEXT DEFAULT '2022-2026',
+      year TEXT DEFAULT 'IV Year',
+      semester TEXT DEFAULT 'Semester VII',
       section TEXT DEFAULT 'Sec-A',
       email TEXT NOT NULL,
       phone TEXT NOT NULL,
@@ -105,6 +106,22 @@ async function seedDatabase() {
     )
   `);
 
+  // Create DPC Profile table (Department Placement Coordinator)
+  await query(`
+    CREATE TABLE IF NOT EXISTS dpc_profile (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER UNIQUE NOT NULL,
+      employee_id TEXT UNIQUE NOT NULL,
+      full_name TEXT NOT NULL,
+      college_name TEXT DEFAULT 'Sri Venkateswara College of Engineering',
+      department TEXT DEFAULT 'Information Technology',
+      designation TEXT DEFAULT 'Department Placement Coordinator (DPC)',
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+  `);
+
   // Create Books Catalog table
   await query(`
     CREATE TABLE IF NOT EXISTS books (
@@ -139,7 +156,7 @@ async function seedDatabase() {
     )
   `);
 
-  // Create No-Dues Requests table
+  // Create No-Dues Requests table with Career Pathway fields
   await query(`
     CREATE TABLE IF NOT EXISTS nodues_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,7 +172,27 @@ async function seedDatabase() {
       progress_percentage INTEGER DEFAULT 16,
       current_stage TEXT DEFAULT 'Department Library',
       certificate_number TEXT,
-      completion_date DATETIME
+      completion_date DATETIME,
+      
+      -- Career Pathway Fields (Options A, B, C, E)
+      career_option TEXT CHECK(career_option IN ('Placements', 'Higher Studies', 'Competitive Exams', 'Entrepreneurship')),
+      company_name TEXT,
+      job_designation TEXT,
+      ctc_package TEXT,
+      offer_letter_url TEXT,
+      higher_college_name TEXT,
+      higher_degree TEXT,
+      higher_app_form_url TEXT,
+      higher_scorecard_url TEXT,
+      higher_contact TEXT,
+      exam_name TEXT,
+      exam_reg_no TEXT,
+      admit_card_url TEXT,
+      exam_details TEXT,
+      startup_name TEXT,
+      business_idea TEXT,
+      business_details TEXT,
+      pitch_deck_url TEXT
     )
   `);
 
@@ -247,7 +284,27 @@ async function seedDatabase() {
     ]
   );
 
-  // 2. DEPARTMENT LIBRARY LOGIN: Sivakumar E (EMP-LIB-IT-01)
+  // 2. DEPARTMENT PLACEMENT COORDINATOR (DPC) LOGIN: Dr. R. Placement Coordinator (EMP-DPC-IT-01)
+  const dpcUser = await query(
+    `INSERT INTO users (username, password, role, email) VALUES (?, ?, ?, ?)`,
+    ['EMP-DPC-IT-01', passwordHash, 'dpc', 'dpc.it@svce.ac.in']
+  );
+  await query(
+    `INSERT INTO dpc_profile (user_id, employee_id, full_name, college_name, department, designation, email, phone)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      dpcUser.lastID,
+      'EMP-DPC-IT-01',
+      'Dr. R. Placement Coordinator',
+      'Sri Venkateswara College of Engineering',
+      'Information Technology',
+      'Department Placement Coordinator (DPC)',
+      'dpc.it@svce.ac.in',
+      '+91 94455 11223'
+    ]
+  );
+
+  // 3. DEPARTMENT LIBRARY LOGIN: Sivakumar E (EMP-LIB-IT-01)
   const libUser = await query(
     `INSERT INTO users (username, password, role, email) VALUES (?, ?, ?, ?)`,
     ['EMP-LIB-IT-01', passwordHash, 'library_staff', 'sivakumar.e@svce.ac.in']
@@ -267,7 +324,7 @@ async function seedDatabase() {
     ]
   );
 
-  // 3. FACULTY ADVISORS LOGINS
+  // 4. FACULTY ADVISORS LOGINS
   const faList = [
     { empId: 'EMP-FA-IT-01', name: 'V.Praveen Kumar', email: 'praveenkumar.v@svce.ac.in', batch: '2023-2027 (III Year IT-B)', phone: '+91 98401 11223' },
     { empId: 'EMP-FA-IT-02', name: 'N.Selvaganesh', email: 'selvaganesh.n@svce.ac.in', batch: '2023-2027 (III Year IT-B)', phone: '+91 98402 22334' },
@@ -287,7 +344,84 @@ async function seedDatabase() {
     );
   }
 
-  // 4. STUDENTS UNDER FACULTY ADVISOR V. RANJITH (3rd Year IT-A: Rolls 1 to 24 & 301)
+  // 5. 4TH YEAR B.TECH IT STUDENTS (FOR CAREER PATHWAY & DPC VERIFICATION)
+  const fourthYearStudents = [
+    { roll: '101', name: 'Aadhityan K', reg: 'IT2024001', section: 'Sec-A', option: 'Placements', comp: 'Zoho Corporation', desig: 'Software Development Engineer', ctc: '8.5 LPA', link: 'https://svce.ac.in/offers/zoho-aadhityan.pdf' },
+    { roll: '102', name: 'Bhavani S', reg: 'IT2024002', section: 'Sec-A', option: 'Higher Studies', univ: 'Carnegie Mellon University', degree: 'MS in Computer Science', scorecard: 'https://svce.ac.in/gre/bhavani-score.pdf', contact: '+1 412 268 2000' },
+    { roll: '103', name: 'Chandra Mouli R', reg: 'IT2024003', section: 'Sec-B', option: 'Competitive Exams', exam: 'GATE 2026 CS/IT', regNo: 'CS26S33012901', admit: 'https://svce.ac.in/gate/chandra-admit.pdf', details: 'Scored 99.4 percentile in GATE CS' },
+    { roll: '104', name: 'Dinesh Karthik', reg: 'IT2024004', section: 'Sec-B', option: 'Entrepreneurship', startup: 'Nexus AI Solutions Pvt Ltd', idea: 'AI-driven logistics automation platform for South India ports', deck: 'https://svce.ac.in/startups/nexus-deck.pdf' }
+  ];
+
+  for (const st of fourthYearStudents) {
+    const email = `${st.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@svce.ac.in`;
+    const sUser = await query(
+      `INSERT INTO users (username, password, role, email) VALUES (?, ?, ?, ?)`,
+      [st.reg, passwordHash, 'student', email]
+    );
+
+    await query(
+      `INSERT INTO students (user_id, register_number, id_card_number, full_name, photo_url, college_name, department, programme, batch, year, semester, section, email, phone, advisor_name, advisor_emp_id, advisor_email, advisor_phone)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        sUser.lastID,
+        st.reg,
+        `SVCE-IT-${st.roll}`,
+        st.name,
+        null,
+        'Sri Venkateswara College of Engineering',
+        'Information Technology',
+        'B.Tech IT',
+        '2022-2026',
+        'IV Year',
+        'Semester VII',
+        st.section,
+        email,
+        `+91 98410 ${st.roll}12`,
+        'V.Praveen Kumar',
+        'EMP-FA-IT-01',
+        'praveenkumar.v@svce.ac.in',
+        '+91 98401 11223'
+      ]
+    );
+
+    // Create Stage 5 DPC Ready Requests for 4th Year Students
+    const req = await query(
+      `INSERT INTO nodues_requests (
+        request_number, register_number, student_name, id_card_number, college_name, department, year, overall_status, progress_percentage, current_stage,
+        career_option, company_name, job_designation, ctc_package, offer_letter_url,
+        higher_college_name, higher_degree, higher_scorecard_url, higher_contact,
+        exam_name, exam_reg_no, admit_card_url, exam_details,
+        startup_name, business_idea, pitch_deck_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        `NDR-2026-F${st.roll}`, st.reg, st.name, `SVCE-IT-${st.roll}`, 'Sri Venkateswara College of Engineering', 'Information Technology', 'IV Year', 'In Progress', 83, 'Department Placement Coordinator',
+        st.option, st.comp || null, st.desig || null, st.ctc || null, st.link || null,
+        st.univ || null, st.degree || null, st.scorecard || null, st.contact || null,
+        st.exam || null, st.regNo || null, st.admit || null, st.details || null,
+        st.startup || null, st.idea || null, st.deck || null
+      ]
+    );
+
+    const stages = [
+      { name: 'Finance', order: 1, status: 'Approved', approved_by: 'SVCE Finance Office', remarks: 'Fees clear.' },
+      { name: 'Central Library', order: 2, status: 'Approved', approved_by: 'Central Library Portal', remarks: 'Cleared.' },
+      { name: 'Department Library', order: 3, status: 'Approved', approved_by: 'Sivakumar E (Library In-Charge)', remarks: '0 Books & ₹0 Fine verified. Cleared.' },
+      { name: 'Faculty Advisor', order: 4, status: 'Approved', approved_by: 'V.Praveen Kumar (Faculty Advisor)', remarks: 'Conduct & attendance verified.' },
+      { name: 'DPC', order: 5, status: 'Pending', approved_by: null, remarks: `Awaiting DPC verification of Career Option: ${st.option}` },
+      { name: 'HOD', order: 6, status: 'Pending', approved_by: null, remarks: 'Final HOD Dr V Vidhya sign-off pending.' }
+    ];
+
+    for (const s of stages) {
+      await query(
+        `INSERT INTO nodues_stages (request_id, department_name, stage_order, status, updated_at, approved_by, remarks)
+         VALUES (?, ?, ?, ?, datetime('now'), ?, ?)`,
+        [req.lastID, s.name, s.order, s.status, s.approved_by, s.remarks]
+      );
+    }
+  }
+
+  // 6. 3RD YEAR STUDENTS (V. RANJITH, S. KAVISHREE, N. SELVAGANESH, V. PRAVEEN KUMAR)
+  // Ranjith Advisees (Rolls 1 to 24 & 301)
   const ranjithAdvisees = [
     { roll: '1', name: 'Abinaya', reg: 'IT2025001' },
     { roll: '2', name: 'Akshaya', reg: 'IT2025002' },
@@ -318,8 +452,6 @@ async function seedDatabase() {
 
   for (const st of ranjithAdvisees) {
     const email = `${st.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@svce.ac.in`;
-    const phone = `+91 98403 ${st.roll}456`;
-
     const sUser = await query(
       `INSERT INTO users (username, password, role, email) VALUES (?, ?, ?, ?)`,
       [st.reg, passwordHash, 'student', email]
@@ -342,7 +474,7 @@ async function seedDatabase() {
         'Semester V',
         'Sec-A',
         email,
-        phone,
+        `+91 98403 ${st.roll}456`,
         'V.Ranjith',
         'EMP-FA-IT-03',
         'ranjith.v@svce.ac.in',
@@ -351,7 +483,7 @@ async function seedDatabase() {
     );
   }
 
-  // 5. STUDENTS UNDER FACULTY ADVISOR S. KAVISHREE (3rd Year IT-A: Rolls 25 to 48 & 302)
+  // Kavishree Advisees (Rolls 25 to 48 & 302)
   const kavishreeAdvisees = [
     { roll: '25', name: 'Harshul', reg: 'IT2025025' },
     { roll: '26', name: 'Hayakreevan', reg: 'IT2025026' },
@@ -382,8 +514,6 @@ async function seedDatabase() {
 
   for (const st of kavishreeAdvisees) {
     const email = `${st.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@svce.ac.in`;
-    const phone = `+91 98404 ${st.roll}789`;
-
     const sUser = await query(
       `INSERT INTO users (username, password, role, email) VALUES (?, ?, ?, ?)`,
       [st.reg, passwordHash, 'student', email]
@@ -406,7 +536,7 @@ async function seedDatabase() {
         'Semester V',
         'Sec-A',
         email,
-        phone,
+        `+91 98404 ${st.roll}789`,
         'S.Kavishree',
         'EMP-FA-IT-04',
         'kavishree.s@svce.ac.in',
@@ -415,7 +545,7 @@ async function seedDatabase() {
     );
   }
 
-  // 6. STUDENTS UNDER FACULTY ADVISOR N. SELVAGANESH (3rd Year IT-B: Rolls 49 to 73)
+  // Selvaganesh Advisees (Rolls 49 to 73)
   const selvaAdvisees = [
     { roll: '49', name: 'Merin Aashika', reg: 'IT2025049' },
     { roll: '50', name: 'Mithun C', reg: 'IT2025050' },
@@ -444,8 +574,6 @@ async function seedDatabase() {
 
   for (const st of selvaAdvisees) {
     const email = `${st.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@svce.ac.in`;
-    const phone = `+91 98402 ${st.roll}789`;
-
     const sUser = await query(
       `INSERT INTO users (username, password, role, email) VALUES (?, ?, ?, ?)`,
       [st.reg, passwordHash, 'student', email]
@@ -468,7 +596,7 @@ async function seedDatabase() {
         'Semester V',
         'Sec-B',
         email,
-        phone,
+        `+91 98402 ${st.roll}789`,
         'N.Selvaganesh',
         'EMP-FA-IT-02',
         'selvaganesh.n@svce.ac.in',
@@ -477,7 +605,7 @@ async function seedDatabase() {
     );
   }
 
-  // 7. STUDENTS UNDER FACULTY ADVISOR V. PRAVEEN KUMAR (3rd Year IT-B: Rolls 74 to 98)
+  // Praveen Advisees (Rolls 74 to 98)
   const praveenAdvisees = [
     { roll: '74', name: 'Ritika S', reg: 'IT2025074' },
     { roll: '75', name: 'Rohinidevi', reg: 'IT2025075' },
@@ -508,8 +636,6 @@ async function seedDatabase() {
 
   for (const st of praveenAdvisees) {
     const email = `${st.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@svce.ac.in`;
-    const phone = `+91 98401 ${st.roll}123`;
-
     const sUser = await query(
       `INSERT INTO users (username, password, role, email) VALUES (?, ?, ?, ?)`,
       [st.reg, passwordHash, 'student', email]
@@ -532,7 +658,7 @@ async function seedDatabase() {
         'Semester V',
         'Sec-B',
         email,
-        phone,
+        `+91 98401 ${st.roll}123`,
         'V.Praveen Kumar',
         'EMP-FA-IT-01',
         'praveenkumar.v@svce.ac.in',
@@ -541,7 +667,7 @@ async function seedDatabase() {
     );
   }
 
-  // 8. BOOKS CATALOG
+  // 7. BOOKS CATALOG
   const sampleBooks = [
     ['BK-IT-101', 'Operating System Concepts', 'Silberschatz, Galvin, Gagne', 'Wiley', 'Core IT', '10th Edition', '978-1118063330', 'Shelf-A2', 30, 24, 6],
     ['BK-IT-102', 'Data Structures and Algorithm Analysis in C++', 'Mark Allen Weiss', 'Pearson', 'Data Structures', '4th Edition', '978-0132847377', 'Shelf-B1', 30, 26, 4],
@@ -558,51 +684,13 @@ async function seedDatabase() {
     );
   }
 
-  // 9. BORROW RECORDS
-  // Harshul (Clean)
-  await query(
-    `INSERT INTO borrow_records (register_number, book_id, issue_date, due_date, return_date, fine_amount, status, fine_status)
-     VALUES ('IT2025025', 'BK-IT-102', '2026-06-01', '2026-06-15', '2026-06-14', 0, 'Returned', 'Paid')`
-  );
-
-  // Hayakreevan (Issued 1 book)
-  await query(
-    `INSERT INTO borrow_records (register_number, book_id, issue_date, due_date, return_date, fine_amount, status, fine_status)
-     VALUES ('IT2025026', 'BK-IT-101', '2026-07-01', '2026-07-15', NULL, 50.00, 'Issued', 'Unpaid')`
-  );
-
-  // 10. NO-DUES CLEARANCE REQUESTS & STAGES FOR S. KAVISHREE ADVISEES
-  // Request for Harshul (At Stage 4 - Ready for FA S.Kavishree approval!)
-  const reqHarshul = await query(
-    `INSERT INTO nodues_requests (request_number, register_number, student_name, id_card_number, college_name, department, year, overall_status, progress_percentage, current_stage)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ['NDR-2026-025', 'IT2025025', 'Harshul', 'SVCE-IT-25', 'Sri Venkateswara College of Engineering', 'Information Technology', 'III Year', 'In Progress', 66, 'Faculty Advisor']
-  );
-
-  const stagesHarshul = [
-    { name: 'Finance', order: 1, status: 'Approved', approved_by: 'SVCE Finance Office', remarks: 'Fees clear.' },
-    { name: 'Central Library', order: 2, status: 'Approved', approved_by: 'Central Library Portal', remarks: 'Cleared.' },
-    { name: 'Department Library', order: 3, status: 'Approved', approved_by: 'Sivakumar E (Library In-Charge)', remarks: '0 Books & ₹0 Fine verified. Cleared.' },
-    { name: 'Faculty Advisor', order: 4, status: 'Pending', approved_by: null, remarks: 'Awaiting Faculty Advisor S.Kavishree review.' },
-    { name: 'DPC', order: 5, status: 'Pending', approved_by: null, remarks: 'Pending FA clearance.' },
-    { name: 'HOD', order: 6, status: 'Pending', approved_by: null, remarks: 'Final HOD Dr V Vidhya sign-off pending.' }
-  ];
-
-  for (const s of stagesHarshul) {
-    await query(
-      `INSERT INTO nodues_stages (request_id, department_name, stage_order, status, updated_at, approved_by, remarks)
-       VALUES (?, ?, ?, ?, datetime('now'), ?, ?)`,
-      [reqHarshul.lastID, s.name, s.order, s.status, s.approved_by, s.remarks]
-    );
-  }
-
-  // 11. ANNOUNCEMENTS
+  // 8. ANNOUNCEMENTS
   await query(
     `INSERT INTO announcements (title, description, college_name, department, category, priority, is_pinned, status)
-     VALUES ('3rd Year IT No-Dues Clearance Schedule', 'All 3rd Year B.Tech IT students under Faculty Advisors S.Kavishree, V.Ranjith, V.Praveen Kumar & N.Selvaganesh are requested to complete book returns with Sivakumar E and submit online clearance applications.', 'Sri Venkateswara College of Engineering', 'Information Technology', 'No-Dues', 'High', 1, 'Published')`
+     VALUES ('4th Year & 3rd Year IT No-Dues & Career Verification Schedule', 'All 4th Year B.Tech IT students must complete Career Pathway details (Placements/Higher Studies/Exams/Entrepreneurship) for Stage 5 DPC clearance.', 'Sri Venkateswara College of Engineering', 'Information Technology', 'No-Dues', 'High', 1, 'Published')`
   );
 
-  console.log('SVCE database seeded successfully with all 98 III Year IT advisees across S.Kavishree, V.Ranjith, V.Praveen Kumar, and N.Selvaganesh!');
+  console.log('SVCE database seeded successfully with DPC Portal & 4th Year Career Pathway data!');
 }
 
 module.exports = { seedDatabase };
