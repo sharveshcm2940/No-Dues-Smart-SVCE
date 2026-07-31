@@ -152,7 +152,8 @@ async function seedDatabase() {
       return_date DATE,
       fine_amount REAL DEFAULT 0,
       status TEXT DEFAULT 'Issued',
-      fine_status TEXT DEFAULT 'None'
+      fine_status TEXT DEFAULT 'None',
+      remarks TEXT
     )
   `);
 

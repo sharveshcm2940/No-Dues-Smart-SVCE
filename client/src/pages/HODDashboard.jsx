@@ -78,6 +78,12 @@ export const HODDashboard = () => {
       setLoading(false);
     };
     loadAll();
+
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleHODAction = async (action) => {
@@ -154,6 +160,19 @@ export const HODDashboard = () => {
     }
   };
 
+  const handleBulkApprove = async () => {
+    if (!window.confirm('Are you sure you want to grant final Head of Department (HOD) approval and issue Digital Certificates for ALL pending Stage 6 requests?')) return;
+    try {
+      const res = await api.post('/hod/bulk-approve');
+      if (res.data.success) {
+        alert(res.data.message);
+        fetchDashboard();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error executing bulk HOD final sign-off.');
+    }
+  };
+
   if (loading || !dashboardData) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center text-slate-500 font-sans text-xs font-semibold">
@@ -162,7 +181,7 @@ export const HODDashboard = () => {
     );
   }
 
-  const { hod, stats, pendingHODApprovals, allDepartmentRequests } = dashboardData;
+  const { hod, stats, pendingHODApprovals, allDepartmentRequests, allStudents = [] } = dashboardData;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
@@ -188,7 +207,7 @@ export const HODDashboard = () => {
                       HEAD OF DEPARTMENT EXECUTIVE DESK
                     </span>
                     <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-                      {hod?.full_name || 'Dr. G. Sumathi'}
+                      {hod?.full_name || 'Dr V Vidhya'}
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {hod?.college_name || 'Sri Venkateswara College of Engineering'} | Department of {hod?.department || 'Information Technology'}
@@ -283,9 +302,19 @@ export const HODDashboard = () => {
           {/* TAB 2: STAGE 6 FINAL APPROVAL DESK */}
           {activeTab === 'final_approvals' && (
             <div className="space-y-4">
-              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
-                <h3 className="text-sm font-bold text-slate-800">Stage 6 Head of Department Final Sign-off Desk</h3>
-                <p className="text-xs text-slate-500">Grant final institutional sign-off and issue official SVCE Digital Clearance Certificates</p>
+              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Stage 6 Head of Department Final Sign-off Desk</h3>
+                  <p className="text-xs text-slate-500">Grant final institutional sign-off and issue official SVCE Digital Clearance Certificates</p>
+                </div>
+
+                <button
+                  onClick={handleBulkApprove}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+                >
+                  <Crown className="w-4 h-4" />
+                  <span>Bulk Grant Final HOD Sign-Off & Issue Certificates</span>
+                </button>
               </div>
 
               <DataTable
@@ -337,6 +366,45 @@ export const HODDashboard = () => {
                 ]}
                 data={allDepartmentRequests}
                 searchPlaceholder="Search master roster..."
+              />
+            </div>
+          )}
+
+          {/* TAB 4: DEPARTMENT STUDENT MASTER ROSTER */}
+          {activeTab === 'students' && (
+            <div className="space-y-4">
+              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-emerald-600" />
+                    <span>Department Student Master Roster ({allStudents.length} Students)</span>
+                  </h3>
+                  <p className="text-xs text-slate-500">Comprehensive IT department student directory across 3rd & 4th Year B.Tech IT advisee batches</p>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs font-semibold">
+                  <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded border border-emerald-200">
+                    Total: {allStudents.length} Students
+                  </span>
+                  <span className="px-2.5 py-1 bg-blue-50 text-blue-800 rounded border border-blue-200">
+                    Cleared: {allStudents.filter(s => s.nodues_status === 'Approved').length}
+                  </span>
+                </div>
+              </div>
+
+              <DataTable
+                columns={[
+                  { header: 'Register No', accessor: 'register_number', cell: (r) => <span className="font-mono font-semibold text-slate-800">{r.register_number}</span> },
+                  { header: 'Student Name', accessor: 'full_name', cell: (r) => <span className="font-bold text-slate-900">{r.full_name}</span> },
+                  { header: 'ID Card No', accessor: 'id_card_number', cell: (r) => <span className="font-mono text-slate-600">{r.id_card_number}</span> },
+                  { header: 'Year / Section', accessor: 'year', cell: (r) => <span className="text-slate-700 font-medium">{r.year} ({r.section || 'Sec-A'})</span> },
+                  { header: 'Faculty Advisor', accessor: 'advisor_name', cell: (r) => <span className="font-semibold text-slate-800">{r.advisor_name || 'V.Praveen Kumar'}</span> },
+                  { header: 'Clearance Status', accessor: 'nodues_status', cell: (r) => <Badge>{r.nodues_status}</Badge> },
+                  { header: 'Current Stage', accessor: 'current_stage', cell: (r) => <span className="font-medium text-slate-600">{r.current_stage}</span> },
+                  { header: 'Certificate ID', accessor: 'certificate_number', cell: (r) => <span className="font-mono text-emerald-700 font-bold">{r.certificate_number || '—'}</span> }
+                ]}
+                data={allStudents}
+                searchPlaceholder="Search by student name, register number, advisor..."
               />
             </div>
           )}

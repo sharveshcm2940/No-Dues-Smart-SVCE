@@ -1,35 +1,59 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Download, Printer, Share2, Award, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Download, Printer, Share2, Award, ShieldCheck, CheckCircle2, History, ChevronRight } from 'lucide-react';
 import SVCELogo from '../common/SVCELogo';
 
-export const DigitalCertificate = ({ activeRequest, profile }) => {
+export const DigitalCertificate = ({ activeRequest, profile, approvedCertificates = [] }) => {
   const certificateRef = useRef(null);
 
-  if (!activeRequest || activeRequest.overall_status !== 'Approved') {
+  // Combine and deduplicate approved requests
+  const certList = React.useMemo(() => {
+    const map = new Map();
+    if (activeRequest && activeRequest.overall_status === 'Approved') {
+      map.set(activeRequest.id, activeRequest);
+    }
+    approvedCertificates.forEach(cert => {
+      if (cert.overall_status === 'Approved') {
+        map.set(cert.id, cert);
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => b.id - a.id);
+  }, [activeRequest, approvedCertificates]);
+
+  const [selectedCertId, setSelectedCertId] = useState(certList.length > 0 ? certList[0].id : null);
+
+  useEffect(() => {
+    if (certList.length > 0 && !selectedCertId) {
+      setSelectedCertId(certList[0].id);
+    }
+  }, [certList, selectedCertId]);
+
+  const selectedCert = certList.find(c => c.id === selectedCertId) || certList[0];
+
+  if (!selectedCert) {
     return (
       <div className="bg-white rounded-lg border border-slate-200 p-8 text-center shadow-xs">
         <div className="w-14 h-14 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 mx-auto mb-4 border border-amber-200">
           <Award className="w-7 h-7" />
         </div>
-        <h3 className="text-lg font-bold text-slate-800 tracking-tight">Digital Certificate Locked</h3>
+        <h3 className="text-lg font-bold text-slate-800 tracking-tight">No Certificates Issued Yet</h3>
         <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
-          The Official SVCE Digital No-Dues Certificate will be generated automatically once all 6 institutional departments (Finance, Central Library, Dept Library - Sivakumar E, Faculty Advisor, DPC, HOD - Dr V Vidhya) approve your application.
+          The Official SVCE Digital No-Dues Certificate will be generated automatically once all 6 institutional departments (Finance, Central Library, Dept Library - Sivakumar E, Faculty Advisor, DPC, HOD - Dr V Vidhya) approve your clearance application.
         </p>
       </div>
     );
   }
 
-  const certNumber = activeRequest.certificate_number || `CERT-SVCE-IT-2026-${String(activeRequest.id).padStart(4, '0')}`;
-  const certDate = activeRequest.completion_date ? new Date(activeRequest.completion_date).toLocaleDateString() : new Date().toLocaleDateString();
+  const certNumber = selectedCert.certificate_number || `CERT-SVCE-IT-2026-${String(selectedCert.id).padStart(4, '0')}`;
+  const certDate = selectedCert.completion_date ? new Date(selectedCert.completion_date).toLocaleDateString() : new Date(selectedCert.updated_at || selectedCert.request_date).toLocaleDateString();
 
   const qrPayload = JSON.stringify({
     institution: 'Sri Venkateswara College of Engineering (SVCE)',
     department: 'Information Technology',
     certificateNumber: certNumber,
-    studentName: profile?.full_name || activeRequest.student_name,
-    registerNumber: activeRequest.register_number,
-    idCardNumber: activeRequest.id_card_number,
+    studentName: profile?.full_name || selectedCert.student_name,
+    registerNumber: selectedCert.register_number,
+    idCardNumber: selectedCert.id_card_number,
     status: 'VERIFIED_CLEARED_NO_DUES',
     dateOfIssue: certDate
   });
@@ -53,14 +77,47 @@ export const DigitalCertificate = ({ activeRequest, profile }) => {
   return (
     <div className="space-y-6">
       
+      {/* HISTORICAL CERTIFICATES SELECTOR BAR (FOR PREVIOUS ISSUED CERTIFICATES) */}
+      {certList.length > 1 && (
+        <div className="bg-gradient-to-r from-slate-900 to-brand-950 p-4 rounded-lg text-white shadow-md flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-amber-400">
+              <History className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold tracking-tight text-white">Issued Certificates Vault ({certList.length} Certificates Available)</h4>
+              <p className="text-[11px] text-slate-300">Select any previously issued No-Dues clearance certificate to view or print</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedCert?.id || ''}
+              onChange={(e) => setSelectedCertId(Number(e.target.value))}
+              className="bg-white text-slate-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {certList.map((cert, index) => (
+                <option key={cert.id} value={cert.id}>
+                  {index === 0 ? 'Latest Certificate' : `Previous Certificate #${certList.length - index}`} ({cert.certificate_number || `CERT-${cert.id}`}) - {new Date(cert.request_date).toLocaleDateString()}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Top Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-            <h3 className="text-sm font-bold text-slate-800">Verified SVCE Institutional Clearance Certificate</h3>
+            <h3 className="text-sm font-bold text-slate-800">
+              Verified SVCE Institutional Clearance Certificate {selectedCert.id !== certList[0].id && '(Previously Issued)'}
+            </h3>
           </div>
-          <p className="text-xs text-slate-500">Certificate ID: {certNumber}</p>
+          <p className="text-xs text-slate-500">
+            Certificate ID: <span className="font-mono font-bold text-slate-700">{certNumber}</span> | Issued Date: {certDate}
+          </p>
         </div>
 
         <div className="flex items-center gap-2 no-print">
@@ -122,8 +179,8 @@ export const DigitalCertificate = ({ activeRequest, profile }) => {
             </div>
 
             <p className="text-sm text-slate-800 leading-relaxed font-serif pt-2">
-              This is to certify that student <strong>{profile?.full_name || activeRequest.student_name}</strong> bearing 
-              Register Number <strong>{activeRequest.register_number}</strong> (ID Card No: <strong>{activeRequest.id_card_number}</strong>) 
+              This is to certify that student <strong>{profile?.full_name || selectedCert.student_name}</strong> bearing 
+              Register Number <strong>{selectedCert.register_number}</strong> (ID Card No: <strong>{selectedCert.id_card_number}</strong>) 
               enrolled in <strong>{profile?.programme || 'B.Tech IT'}</strong>, Batch <strong>{profile?.batch || '2022-2026'}</strong> has 
               satisfactorily cleared all non-academic, financial, central library, IT department library (Sivakumar E), faculty advisor, DPC, and HOD (Dr V Vidhya) clearance requirements across Sri Venkateswara College of Engineering.
             </p>

@@ -110,6 +110,12 @@ export const StudentDashboard = () => {
       setLoading(false);
     };
     loadAll();
+
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Handlers
@@ -407,7 +413,11 @@ export const StudentDashboard = () => {
 
           {/* TAB 3: DIGITAL NO-DUES CERTIFICATE */}
           {activeTab === 'certificate' && (
-            <DigitalCertificate activeRequest={activeRequest} profile={profile} />
+            <DigitalCertificate 
+              activeRequest={activeRequest} 
+              profile={profile} 
+              approvedCertificates={dashboardData?.approvedCertificates || []}
+            />
           )}
 
           {/* TAB 4: BORROWED BOOKS & HISTORY */}

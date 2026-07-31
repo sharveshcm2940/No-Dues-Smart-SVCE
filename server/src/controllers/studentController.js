@@ -63,6 +63,12 @@ exports.getStudentDashboard = async (req, res) => {
     const approvedCount = stages.filter(s => s.status === 'Approved').length;
     const pendingCount = stages.filter(s => s.status === 'Pending').length;
 
+    // All Approved Certificates (Current & Previous Terms)
+    const approvedCertificates = await query(
+      `SELECT * FROM nodues_requests WHERE register_number = ? AND overall_status = 'Approved' ORDER BY id DESC`,
+      [regNo]
+    );
+
     return res.json({
       success: true,
       data: {
@@ -78,6 +84,7 @@ exports.getStudentDashboard = async (req, res) => {
           pendingDepartments: pendingCount
         },
         activeRequest,
+        approvedCertificates,
         stages,
         borrowedBooks
       }
@@ -153,12 +160,14 @@ exports.submitNoDuesRequest = async (req, res) => {
       ]
     );
 
+    const isFourthYearReq = student.year && (student.year.includes('IV') || student.year.includes('4th') || student.year.includes('Fourth') || student.year === 'IV Year');
+
     const stages = [
       { name: 'Finance', order: 1, status: 'Approved', approved_by: 'Finance Office Automation', remarks: 'Tuition and term fees clear.' },
       { name: 'Central Library', order: 2, status: 'Approved', approved_by: 'Central Library Portal', remarks: 'Central Library clearance granted.' },
       { name: 'Department Library', order: 3, status: 'Pending', approved_by: null, remarks: remarks || 'Under verification by IT Dept Library Staff.' },
       { name: 'Faculty Advisor', order: 4, status: 'Pending', approved_by: null, remarks: 'Awaiting Department Library approval.' },
-      { name: 'DPC', order: 5, status: 'Pending', approved_by: null, remarks: career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting prior stage approvals.' },
+      { name: 'DPC', order: 5, status: isFourthYearReq ? 'Pending' : 'Approved', approved_by: isFourthYearReq ? null : 'System Auto-Exempt (1st-3rd Year)', remarks: isFourthYearReq ? (career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting DPC Placement Officer verification.') : 'Non-final year student; DPC placement verification exempted.' },
       { name: 'HOD', order: 6, status: 'Pending', approved_by: null, remarks: 'Final approval pending.' }
     ];
 
@@ -308,14 +317,38 @@ exports.getAnnouncements = async (req, res) => {
   }
 };
 
-// Get Student Notifications
+// Get User Notifications (Student, FA, Staff, DPC, HOD)
 exports.getNotifications = async (req, res) => {
   try {
-    const regNo = req.user.username;
+    const username = req.user.username;
+    const role = req.user.role;
+
+    let possibleTargets = [username];
+
+    if (role === 'student') {
+      const student = await getOne('SELECT register_number, email FROM students WHERE user_id = ? OR register_number = ?', [req.user.id, username]);
+      if (student) {
+        if (student.register_number) possibleTargets.push(student.register_number);
+        if (student.email) possibleTargets.push(student.email);
+      }
+    } else if (role === 'faculty_advisor') {
+      const fa = await getOne('SELECT employee_id, email, full_name FROM faculty_advisors WHERE user_id = ? OR employee_id = ?', [req.user.id, username]);
+      if (fa) {
+        if (fa.employee_id) possibleTargets.push(fa.employee_id);
+        if (fa.email) possibleTargets.push(fa.email);
+        if (fa.full_name) possibleTargets.push(fa.full_name);
+      }
+    }
+
+    // Remove duplicates and empty values
+    possibleTargets = [...new Set(possibleTargets.filter(Boolean))];
+
+    const placeholders = possibleTargets.map(() => '?').join(',');
     const list = await query(
-      `SELECT * FROM notifications WHERE target_user = ? ORDER BY id DESC LIMIT 20`,
-      [regNo]
+      `SELECT * FROM notifications WHERE target_user IN (${placeholders}) ORDER BY id DESC LIMIT 30`,
+      possibleTargets
     );
+
     return res.json({ success: true, notifications: list });
   } catch (error) {
     console.error('Get Notifications Error:', error);

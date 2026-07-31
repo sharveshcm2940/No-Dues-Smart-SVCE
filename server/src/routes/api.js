@@ -82,6 +82,20 @@ router.post(
   libraryController.processNoDuesAction
 );
 
+router.post(
+  '/library/add-fine',
+  authenticateToken,
+  authorizeRole(['library_staff']),
+  libraryController.addFineToStudent
+);
+
+router.post(
+  '/library/update-metrics',
+  authenticateToken,
+  authorizeRole(['library_staff']),
+  libraryController.updateLibraryMetrics
+);
+
 router.get(
   '/library/books',
   authenticateToken,
@@ -159,6 +173,13 @@ router.get(
   libraryController.getReportData
 );
 
+router.post(
+  '/library/bulk-approve',
+  authenticateToken,
+  authorizeRole(['library_staff']),
+  libraryController.bulkApproveNoDues
+);
+
 // Faculty Advisor Routes (Role: faculty_advisor)
 router.get(
   '/fa/dashboard',
@@ -172,6 +193,13 @@ router.post(
   authenticateToken,
   authorizeRole(['faculty_advisor']),
   faController.processFAAction
+);
+
+router.post(
+  '/fa/bulk-approve',
+  authenticateToken,
+  authorizeRole(['faculty_advisor']),
+  faController.bulkApproveAdvisees
 );
 
 // Head of Department Routes (Role: hod)
@@ -189,6 +217,13 @@ router.post(
   hodController.processHODAction
 );
 
+router.post(
+  '/hod/bulk-approve',
+  authenticateToken,
+  authorizeRole(['hod']),
+  hodController.bulkApproveHOD
+);
+
 // Department Placement Coordinator Routes (Role: dpc)
 router.get(
   '/dpc/dashboard',
@@ -202,6 +237,13 @@ router.post(
   authenticateToken,
   authorizeRole(['dpc']),
   dpcController.processDPCAction
+);
+
+router.post(
+  '/dpc/bulk-approve',
+  authenticateToken,
+  authorizeRole(['dpc']),
+  dpcController.bulkApproveDPC
 );
 
 module.exports = router;

@@ -25,6 +25,14 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
   const [declared, setDeclared] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  // Check strictly if the logged in student is in 4th Year (IV Year / Final Year)
+  const isFourthYear = profile?.year && (
+    profile.year.includes('IV') || 
+    profile.year.includes('4th') || 
+    profile.year.includes('Fourth') || 
+    profile.year === 'IV Year'
+  );
+
   // 4th Year Career Pathway Form State
   const [careerOption, setCareerOption] = useState('Placements');
 
@@ -88,28 +96,29 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
       const payload = {
         forceNew: true,
         remarks,
-        career_option: careerOption,
+        // Send career fields ONLY if the student is in 4th Year
+        career_option: isFourthYear ? careerOption : null,
         // Option A
-        company_name: companyName,
-        job_designation: jobDesignation,
-        ctc_package: ctcPackage,
-        offer_letter_url: offerLetterUrl,
+        company_name: isFourthYear ? companyName : null,
+        job_designation: isFourthYear ? jobDesignation : null,
+        ctc_package: isFourthYear ? ctcPackage : null,
+        offer_letter_url: isFourthYear ? offerLetterUrl : null,
         // Option B
-        higher_college_name: higherCollegeName,
-        higher_degree: higherDegree,
-        higher_app_form_url: higherAppFormUrl,
-        higher_scorecard_url: higherScorecardUrl,
-        higher_contact: higherContact,
+        higher_college_name: isFourthYear ? higherCollegeName : null,
+        higher_degree: isFourthYear ? higherDegree : null,
+        higher_app_form_url: isFourthYear ? higherAppFormUrl : null,
+        higher_scorecard_url: isFourthYear ? higherScorecardUrl : null,
+        higher_contact: isFourthYear ? higherContact : null,
         // Option C
-        exam_name: examName,
-        exam_reg_no: examRegNo,
-        admit_card_url: admitCardUrl,
-        exam_details: examDetails,
+        exam_name: isFourthYear ? examName : null,
+        exam_reg_no: isFourthYear ? examRegNo : null,
+        admit_card_url: isFourthYear ? admitCardUrl : null,
+        exam_details: isFourthYear ? examDetails : null,
         // Option E
-        startup_name: startupName,
-        business_idea: businessIdea,
-        business_details: businessDetails,
-        pitch_deck_url: pitchDeckUrl
+        startup_name: isFourthYear ? startupName : null,
+        business_idea: isFourthYear ? businessIdea : null,
+        business_details: isFourthYear ? businessDetails : null,
+        pitch_deck_url: isFourthYear ? pitchDeckUrl : null
       };
 
       await onSubmitRequest(payload);
@@ -121,6 +130,497 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
     }
   };
 
+  const renderFormModalContent = () => (
+    <form onSubmit={handleModalSubmit} className="space-y-4 text-xs text-left max-h-[80vh] overflow-y-auto pr-1">
+      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-1">
+        <p><span className="font-semibold text-slate-700">Student Name:</span> {profile?.full_name}</p>
+        <p><span className="font-semibold text-slate-700">Register Number:</span> {profile?.register_number}</p>
+        <p><span className="font-semibold text-slate-700">Department:</span> {profile?.department || 'Information Technology'}</p>
+        <p><span className="font-semibold text-slate-700">Academic Term:</span> Academic Year 2025 - 2026 ({profile?.year || 'Regular'})</p>
+      </div>
+
+      {/* CAREER PATHWAY SELECTION & DOCUMENT UPLOAD (ASKED FOR 4TH YEAR STUDENTS ALONE) */}
+      {isFourthYear ? (
+        <div className="space-y-3 bg-brand-50/40 p-4 rounded-lg border border-brand-200">
+          <label className="block font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
+            <Briefcase className="w-4 h-4 text-brand-600" />
+            <span>Select Career Pathway & Upload Required Documents (4th Year Final Clearance) *</span>
+          </label>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            
+            {/* Option A */}
+            <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
+              careerOption === 'Placements' ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
+            }`}>
+              <input
+                type="radio"
+                name="careerOption"
+                value="Placements"
+                checked={careerOption === 'Placements'}
+                onChange={(e) => setCareerOption(e.target.value)}
+                className="text-blue-600"
+              />
+              <span>Option A: Placements</span>
+            </label>
+
+            {/* Option B */}
+            <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
+              careerOption === 'Higher Studies' ? 'bg-purple-50 border-purple-400 text-purple-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
+            }`}>
+              <input
+                type="radio"
+                name="careerOption"
+                value="Higher Studies"
+                checked={careerOption === 'Higher Studies'}
+                onChange={(e) => setCareerOption(e.target.value)}
+                className="text-purple-600"
+              />
+              <span>Option B: Higher Studies</span>
+            </label>
+
+            {/* Option C */}
+            <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
+              careerOption === 'Competitive Exams' ? 'bg-amber-50 border-amber-400 text-amber-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
+            }`}>
+              <input
+                type="radio"
+                name="careerOption"
+                value="Competitive Exams"
+                checked={careerOption === 'Competitive Exams'}
+                onChange={(e) => setCareerOption(e.target.value)}
+                className="text-amber-600"
+              />
+              <span>Option C: Competitive Exams</span>
+            </label>
+
+            {/* Option E */}
+            <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
+              careerOption === 'Entrepreneurship' ? 'bg-emerald-50 border-emerald-400 text-emerald-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
+            }`}>
+              <input
+                type="radio"
+                name="careerOption"
+                value="Entrepreneurship"
+                checked={careerOption === 'Entrepreneurship'}
+                onChange={(e) => setCareerOption(e.target.value)}
+                className="text-emerald-600"
+              />
+              <span>Option E: Entrepreneurship</span>
+            </label>
+
+          </div>
+
+          {/* DYNAMIC FORM FIELDS BASED ON CAREER OPTION */}
+          
+          {/* Option A: Placements Form */}
+          {careerOption === 'Placements' && (
+            <div className="bg-white p-3.5 rounded-lg border border-blue-200 space-y-3 mt-2">
+              <h5 className="font-bold text-blue-900 flex items-center gap-1.5">
+                <Briefcase className="w-4 h-4 text-blue-600" />
+                <span>Option A: Campus Placement Details & Document Upload</span>
+              </h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Company Name *</label>
+                  <input
+                    type="text"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="e.g. Zoho Corporation / TCS / Cognizant"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Job Designation *</label>
+                  <input
+                    type="text"
+                    value={jobDesignation}
+                    onChange={(e) => setJobDesignation(e.target.value)}
+                    placeholder="e.g. Software Engineer / Product Analyst"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">CTC Package (LPA) *</label>
+                  <input
+                    type="text"
+                    value={ctcPackage}
+                    onChange={(e) => setCtcPackage(e.target.value)}
+                    placeholder="e.g. 8.5 LPA"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                    required
+                  />
+                </div>
+
+                {/* FILE UPLOAD: OFFER LETTER */}
+                <div className="space-y-1">
+                  <label className="block font-semibold text-slate-700">Upload Offer Letter Document (PDF/Image) *</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                      onChange={(e) => handleFileUpload(e, setOfferLetterUrl, setOfferLetterName)}
+                      className="hidden"
+                      id="offer-letter-file"
+                    />
+                    <label
+                      htmlFor="offer-letter-file"
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 font-semibold border border-blue-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Upload File...</span>
+                    </label>
+                    {offerLetterName ? (
+                      <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
+                        <FileText className="w-3.5 h-3.5 text-blue-600" />
+                        <span className="truncate max-w-[130px]">{offerLetterName}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setOfferLetterUrl(''); setOfferLetterName(''); }}
+                          className="text-red-500 hover:text-red-700 ml-1"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 italic">No file selected</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Option B: Higher Studies Form */}
+          {careerOption === 'Higher Studies' && (
+            <div className="bg-white p-3.5 rounded-lg border border-purple-200 space-y-3 mt-2">
+              <h5 className="font-bold text-purple-900 flex items-center gap-1.5">
+                <GraduationCap className="w-4 h-4 text-purple-600" />
+                <span>Option B: Higher Studies Admission Details & Document Upload</span>
+              </h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Target University / College Details *</label>
+                  <input
+                    type="text"
+                    value={higherCollegeName}
+                    onChange={(e) => setHigherCollegeName(e.target.value)}
+                    placeholder="e.g. Carnegie Mellon University / IIT Madras"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Degree & Program *</label>
+                  <input
+                    type="text"
+                    value={higherDegree}
+                    onChange={(e) => setHigherDegree(e.target.value)}
+                    placeholder="e.g. MS in Computer Science"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                    required
+                  />
+                </div>
+                
+                {/* FILE UPLOAD: APPLICATION FORM */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Upload Application Form *</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                      onChange={(e) => handleFileUpload(e, setHigherAppFormUrl, setHigherAppFormName)}
+                      className="hidden"
+                      id="higher-app-file"
+                    />
+                    <label
+                      htmlFor="higher-app-file"
+                      className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-semibold border border-purple-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Upload App File...</span>
+                    </label>
+                    {higherAppFormName ? (
+                      <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
+                        <FileText className="w-3.5 h-3.5 text-purple-600" />
+                        <span className="truncate max-w-[120px]">{higherAppFormName}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setHigherAppFormUrl(''); setHigherAppFormName(''); }}
+                          className="text-red-500 hover:text-red-700 ml-1"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 italic">No file</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* FILE UPLOAD: SCORECARD */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Upload GRE/GATE/TOEFL Scorecard *</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                      onChange={(e) => handleFileUpload(e, setHigherScorecardUrl, setHigherScorecardName)}
+                      className="hidden"
+                      id="higher-score-file"
+                    />
+                    <label
+                      htmlFor="higher-score-file"
+                      className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-semibold border border-purple-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Upload Scorecard...</span>
+                    </label>
+                    {higherScorecardName ? (
+                      <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
+                        <FileText className="w-3.5 h-3.5 text-purple-600" />
+                        <span className="truncate max-w-[120px]">{higherScorecardName}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setHigherScorecardUrl(''); setHigherScorecardName(''); }}
+                          className="text-red-500 hover:text-red-700 ml-1"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 italic">No file</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-slate-700 mb-1">Contact / Admission Reference Info *</label>
+                  <input
+                    type="text"
+                    value={higherContact}
+                    onChange={(e) => setHigherContact(e.target.value)}
+                    placeholder="e.g. App ID: CMU-2026-9901 | Contact: admissions@cmu.edu"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Option C: Competitive Exams Form */}
+          {careerOption === 'Competitive Exams' && (
+            <div className="bg-white p-3.5 rounded-lg border border-amber-200 space-y-3 mt-2">
+              <h5 className="font-bold text-amber-900 flex items-center gap-1.5">
+                <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+                <span>Option C: Competitive Exam Details & Admit Card Upload</span>
+              </h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Exam Name *</label>
+                  <input
+                    type="text"
+                    value={examName}
+                    onChange={(e) => setExamName(e.target.value)}
+                    placeholder="e.g. GATE 2026 CS/IT / CAT 2025 / UPSC"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Registration / Roll Details *</label>
+                  <input
+                    type="text"
+                    value={examRegNo}
+                    onChange={(e) => setExamRegNo(e.target.value)}
+                    placeholder="e.g. CS26S33012901"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                    required
+                  />
+                </div>
+                
+                {/* FILE UPLOAD: ADMIT CARD */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Upload Admit Card / Scorecard Document *</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                      onChange={(e) => handleFileUpload(e, setAdmitCardUrl, setAdmitCardName)}
+                      className="hidden"
+                      id="admit-card-file"
+                    />
+                    <label
+                      htmlFor="admit-card-file"
+                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold border border-amber-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Upload Admit Card...</span>
+                    </label>
+                    {admitCardName ? (
+                      <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
+                        <FileText className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="truncate max-w-[130px]">{admitCardName}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setAdmitCardUrl(''); setAdmitCardName(''); }}
+                          className="text-red-500 hover:text-red-700 ml-1"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 italic">No file</span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Exam Score / Percentile *</label>
+                  <input
+                    type="text"
+                    value={examDetails}
+                    onChange={(e) => setExamDetails(e.target.value)}
+                    placeholder="e.g. Scored 99.4 percentile in GATE CS"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Option E: Entrepreneurship Form */}
+          {careerOption === 'Entrepreneurship' && (
+            <div className="bg-white p-3.5 rounded-lg border border-emerald-200 space-y-3 mt-2">
+              <h5 className="font-bold text-emerald-900 flex items-center gap-1.5">
+                <Lightbulb className="w-4 h-4 text-emerald-600" />
+                <span>Option E: Entrepreneurship Details & Pitch Deck Upload</span>
+              </h5>
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Startup / Business Name *</label>
+                    <input
+                      type="text"
+                      value={startupName}
+                      onChange={(e) => setStartupName(e.target.value)}
+                      placeholder="e.g. Nexus AI Solutions Pvt Ltd"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                      required
+                    />
+                  </div>
+                  
+                  {/* FILE UPLOAD: PITCH DECK */}
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Upload Pitch Deck / Incubation Document *</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.ppt,.pptx"
+                        onChange={(e) => handleFileUpload(e, setPitchDeckUrl, setPitchDeckName)}
+                        className="hidden"
+                        id="pitch-deck-file"
+                      />
+                      <label
+                        htmlFor="pitch-deck-file"
+                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Upload Pitch Deck...</span>
+                      </label>
+                      {pitchDeckName ? (
+                        <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
+                          <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="truncate max-w-[130px]">{pitchDeckName}</span>
+                          <button
+                            type="button"
+                            onClick={() => { setPitchDeckUrl(''); setPitchDeckName(''); }}
+                            className="text-red-500 hover:text-red-700 ml-1"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 italic">No file</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Business Idea / Executive Summary *</label>
+                  <textarea
+                    rows={2}
+                    value={businessIdea}
+                    onChange={(e) => setBusinessIdea(e.target.value)}
+                    placeholder="Describe your business idea and venture product summary..."
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      ) : (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 flex items-center gap-2 font-medium text-xs">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>Regular No-Dues Application for {profile?.year || 'Undergraduate Student'}. No career placement documentation required.</span>
+        </div>
+      )}
+
+      <div>
+        <label className="block font-semibold text-slate-700 mb-1">Additional Student Remarks (Optional)</label>
+        <textarea
+          rows={2}
+          value={remarks}
+          onChange={(e) => setRemarks(e.target.value)}
+          placeholder="Any relevant note for department clearance officers..."
+          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-medium text-slate-800"
+        />
+      </div>
+
+      <div className="pt-2">
+        <label className="flex items-start gap-2 cursor-pointer font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={declared}
+            onChange={(e) => setDeclared(e.target.checked)}
+            className="mt-0.5 rounded text-brand-600 h-4 w-4"
+            required
+          />
+          <span className="text-[11px] leading-relaxed">
+            I hereby declare that I am applying for official No-Dues clearance for the current academic term and that all details provided are true and correct.
+          </span>
+        </label>
+      </div>
+
+      <div className="pt-4 border-t border-slate-100 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setShowSubmitModal(false)}
+          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>{submitting ? 'Submitting...' : 'Confirm & Submit Application'}</span>
+        </button>
+      </div>
+    </form>
+  );
+
   if (!activeRequest) {
     return (
       <div className="bg-white rounded-lg border border-slate-200 p-8 text-center shadow-xs">
@@ -129,7 +629,7 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
         </div>
         <h3 className="text-lg font-bold text-slate-800 tracking-tight">No Active Clearance Request</h3>
         <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-6 leading-relaxed">
-          Submit your online No-Dues clearance application with document uploads to initiate multi-department verification across Finance, Central Library, IT Department Library, Faculty Advisor, DPC, and HOD.
+          Submit your online No-Dues clearance application to initiate multi-department verification across Finance, Central Library, IT Department Library, Faculty Advisor, DPC, and HOD.
         </p>
         <button
           onClick={() => setShowSubmitModal(true)}
@@ -140,488 +640,12 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
         </button>
 
         {/* Submission Form Modal */}
-        <Modal isOpen={showSubmitModal} onClose={() => setShowSubmitModal(false)} title="Submit New No-Dues Clearance Application with Document Upload">
-          <form onSubmit={handleModalSubmit} className="space-y-4 text-xs text-left max-h-[80vh] overflow-y-auto pr-1">
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-1">
-              <p><span className="font-semibold text-slate-700">Student Name:</span> {profile?.full_name}</p>
-              <p><span className="font-semibold text-slate-700">Register Number:</span> {profile?.register_number}</p>
-              <p><span className="font-semibold text-slate-700">Department:</span> {profile?.department || 'Information Technology'}</p>
-              <p><span className="font-semibold text-slate-700">Academic Term:</span> Academic Year 2025 - 2026 ({profile?.year || 'IV Year'})</p>
-            </div>
-
-            {/* CAREER PATHWAY SELECTION FOR 4TH YEAR STUDENTS */}
-            <div className="space-y-3 bg-brand-50/40 p-4 rounded-lg border border-brand-200">
-              <label className="block font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-                <Briefcase className="w-4 h-4 text-brand-600" />
-                <span>Select Career Pathway & Upload Required Documents *</span>
-              </label>
-
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                
-                {/* Option A */}
-                <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
-                  careerOption === 'Placements' ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
-                }`}>
-                  <input
-                    type="radio"
-                    name="careerOption"
-                    value="Placements"
-                    checked={careerOption === 'Placements'}
-                    onChange={(e) => setCareerOption(e.target.value)}
-                    className="text-blue-600"
-                  />
-                  <span>Option A: Placements</span>
-                </label>
-
-                {/* Option B */}
-                <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
-                  careerOption === 'Higher Studies' ? 'bg-purple-50 border-purple-400 text-purple-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
-                }`}>
-                  <input
-                    type="radio"
-                    name="careerOption"
-                    value="Higher Studies"
-                    checked={careerOption === 'Higher Studies'}
-                    onChange={(e) => setCareerOption(e.target.value)}
-                    className="text-purple-600"
-                  />
-                  <span>Option B: Higher Studies</span>
-                </label>
-
-                {/* Option C */}
-                <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
-                  careerOption === 'Competitive Exams' ? 'bg-amber-50 border-amber-400 text-amber-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
-                }`}>
-                  <input
-                    type="radio"
-                    name="careerOption"
-                    value="Competitive Exams"
-                    checked={careerOption === 'Competitive Exams'}
-                    onChange={(e) => setCareerOption(e.target.value)}
-                    className="text-amber-600"
-                  />
-                  <span>Option C: Competitive Exams</span>
-                </label>
-
-                {/* Option E */}
-                <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
-                  careerOption === 'Entrepreneurship' ? 'bg-emerald-50 border-emerald-400 text-emerald-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
-                }`}>
-                  <input
-                    type="radio"
-                    name="careerOption"
-                    value="Entrepreneurship"
-                    checked={careerOption === 'Entrepreneurship'}
-                    onChange={(e) => setCareerOption(e.target.value)}
-                    className="text-emerald-600"
-                  />
-                  <span>Option E: Entrepreneurship</span>
-                </label>
-
-              </div>
-
-              {/* DYNAMIC FORM FIELDS BASED ON CAREER OPTION */}
-              
-              {/* Option A: Placements Form */}
-              {careerOption === 'Placements' && (
-                <div className="bg-white p-3.5 rounded-lg border border-blue-200 space-y-3 mt-2">
-                  <h5 className="font-bold text-blue-900 flex items-center gap-1.5">
-                    <Briefcase className="w-4 h-4 text-blue-600" />
-                    <span>Option A: Campus Placement Details & Document Upload</span>
-                  </h5>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Company Name *</label>
-                      <input
-                        type="text"
-                        value={companyName}
-                        onChange={(e) => setCompanyName(e.target.value)}
-                        placeholder="e.g. Zoho Corporation / TCS / Cognizant"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Job Designation *</label>
-                      <input
-                        type="text"
-                        value={jobDesignation}
-                        onChange={(e) => setJobDesignation(e.target.value)}
-                        placeholder="e.g. Software Engineer / Product Analyst"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">CTC Package (LPA) *</label>
-                      <input
-                        type="text"
-                        value={ctcPackage}
-                        onChange={(e) => setCtcPackage(e.target.value)}
-                        placeholder="e.g. 8.5 LPA"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                    
-                    {/* FILE UPLOAD: OFFER LETTER */}
-                    <div className="space-y-1">
-                      <label className="block font-semibold text-slate-700">Upload Offer Letter Document (PDF/Image) *</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="file"
-                          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                          onChange={(e) => handleFileUpload(e, setOfferLetterUrl, setOfferLetterName)}
-                          className="hidden"
-                          id="offer-letter-file"
-                        />
-                        <label
-                          htmlFor="offer-letter-file"
-                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 font-semibold border border-blue-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-                        >
-                          <Upload className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Upload File...</span>
-                        </label>
-                        {offerLetterName ? (
-                          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
-                            <FileText className="w-3.5 h-3.5 text-blue-600" />
-                            <span className="truncate max-w-[130px]">{offerLetterName}</span>
-                            <button
-                              type="button"
-                              onClick={() => { setOfferLetterUrl(''); setOfferLetterName(''); }}
-                              className="text-red-500 hover:text-red-700 ml-1"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-slate-400 italic">No file selected</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Option B: Higher Studies Form */}
-              {careerOption === 'Higher Studies' && (
-                <div className="bg-white p-3.5 rounded-lg border border-purple-200 space-y-3 mt-2">
-                  <h5 className="font-bold text-purple-900 flex items-center gap-1.5">
-                    <GraduationCap className="w-4 h-4 text-purple-600" />
-                    <span>Option B: Higher Studies Admission Details & Document Upload</span>
-                  </h5>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Target University / College Details *</label>
-                      <input
-                        type="text"
-                        value={higherCollegeName}
-                        onChange={(e) => setHigherCollegeName(e.target.value)}
-                        placeholder="e.g. Carnegie Mellon University / IIT Madras"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Degree & Program *</label>
-                      <input
-                        type="text"
-                        value={higherDegree}
-                        onChange={(e) => setHigherDegree(e.target.value)}
-                        placeholder="e.g. MS in Computer Science"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                    
-                    {/* FILE UPLOAD: APPLICATION FORM */}
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Upload Application Form *</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="file"
-                          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                          onChange={(e) => handleFileUpload(e, setHigherAppFormUrl, setHigherAppFormName)}
-                          className="hidden"
-                          id="higher-app-file"
-                        />
-                        <label
-                          htmlFor="higher-app-file"
-                          className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-semibold border border-purple-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-                        >
-                          <Upload className="w-3.5 h-3.5 text-purple-600" />
-                          <span>Upload App File...</span>
-                        </label>
-                        {higherAppFormName ? (
-                          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
-                            <FileText className="w-3.5 h-3.5 text-purple-600" />
-                            <span className="truncate max-w-[120px]">{higherAppFormName}</span>
-                            <button
-                              type="button"
-                              onClick={() => { setHigherAppFormUrl(''); setHigherAppFormName(''); }}
-                              className="text-red-500 hover:text-red-700 ml-1"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-slate-400 italic">No file</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* FILE UPLOAD: SCORECARD */}
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Upload GRE/GATE/TOEFL Scorecard *</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="file"
-                          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                          onChange={(e) => handleFileUpload(e, setHigherScorecardUrl, setHigherScorecardName)}
-                          className="hidden"
-                          id="higher-score-file"
-                        />
-                        <label
-                          htmlFor="higher-score-file"
-                          className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-semibold border border-purple-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-                        >
-                          <Upload className="w-3.5 h-3.5 text-purple-600" />
-                          <span>Upload Scorecard...</span>
-                        </label>
-                        {higherScorecardName ? (
-                          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
-                            <FileText className="w-3.5 h-3.5 text-purple-600" />
-                            <span className="truncate max-w-[120px]">{higherScorecardName}</span>
-                            <button
-                              type="button"
-                              onClick={() => { setHigherScorecardUrl(''); setHigherScorecardName(''); }}
-                              className="text-red-500 hover:text-red-700 ml-1"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-slate-400 italic">No file</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <label className="block font-semibold text-slate-700 mb-1">Contact / Admission Reference Info *</label>
-                      <input
-                        type="text"
-                        value={higherContact}
-                        onChange={(e) => setHigherContact(e.target.value)}
-                        placeholder="e.g. App ID: CMU-2026-9901 | Contact: admissions@cmu.edu"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Option C: Competitive Exams Form */}
-              {careerOption === 'Competitive Exams' && (
-                <div className="bg-white p-3.5 rounded-lg border border-amber-200 space-y-3 mt-2">
-                  <h5 className="font-bold text-amber-900 flex items-center gap-1.5">
-                    <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-                    <span>Option C: Competitive Exam Details & Admit Card Upload</span>
-                  </h5>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Exam Name *</label>
-                      <input
-                        type="text"
-                        value={examName}
-                        onChange={(e) => setExamName(e.target.value)}
-                        placeholder="e.g. GATE 2026 CS/IT / CAT 2025 / UPSC"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Registration / Roll Details *</label>
-                      <input
-                        type="text"
-                        value={examRegNo}
-                        onChange={(e) => setExamRegNo(e.target.value)}
-                        placeholder="e.g. CS26S33012901"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                    
-                    {/* FILE UPLOAD: ADMIT CARD */}
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Upload Admit Card / Scorecard Document *</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="file"
-                          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                          onChange={(e) => handleFileUpload(e, setAdmitCardUrl, setAdmitCardName)}
-                          className="hidden"
-                          id="admit-card-file"
-                        />
-                        <label
-                          htmlFor="admit-card-file"
-                          className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold border border-amber-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-                        >
-                          <Upload className="w-3.5 h-3.5 text-amber-600" />
-                          <span>Upload Admit Card...</span>
-                        </label>
-                        {admitCardName ? (
-                          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
-                            <FileText className="w-3.5 h-3.5 text-amber-600" />
-                            <span className="truncate max-w-[130px]">{admitCardName}</span>
-                            <button
-                              type="button"
-                              onClick={() => { setAdmitCardUrl(''); setAdmitCardName(''); }}
-                              className="text-red-500 hover:text-red-700 ml-1"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-slate-400 italic">No file</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Exam Score / Percentile *</label>
-                      <input
-                        type="text"
-                        value={examDetails}
-                        onChange={(e) => setExamDetails(e.target.value)}
-                        placeholder="e.g. Scored 99.4 percentile in GATE CS"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Option E: Entrepreneurship Form */}
-              {careerOption === 'Entrepreneurship' && (
-                <div className="bg-white p-3.5 rounded-lg border border-emerald-200 space-y-3 mt-2">
-                  <h5 className="font-bold text-emerald-900 flex items-center gap-1.5">
-                    <Lightbulb className="w-4 h-4 text-emerald-600" />
-                    <span>Option E: Entrepreneurship Details & Pitch Deck Upload</span>
-                  </h5>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block font-semibold text-slate-700 mb-1">Startup / Business Name *</label>
-                        <input
-                          type="text"
-                          value={startupName}
-                          onChange={(e) => setStartupName(e.target.value)}
-                          placeholder="e.g. Nexus AI Solutions Pvt Ltd"
-                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                          required
-                        />
-                      </div>
-                      
-                      {/* FILE UPLOAD: PITCH DECK */}
-                      <div>
-                        <label className="block font-semibold text-slate-700 mb-1">Upload Pitch Deck / Incubation Document *</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="file"
-                            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.ppt,.pptx"
-                            onChange={(e) => handleFileUpload(e, setPitchDeckUrl, setPitchDeckName)}
-                            className="hidden"
-                            id="pitch-deck-file"
-                          />
-                          <label
-                            htmlFor="pitch-deck-file"
-                            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-                          >
-                            <Upload className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Upload Pitch Deck...</span>
-                          </label>
-                          {pitchDeckName ? (
-                            <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
-                              <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                              <span className="truncate max-w-[130px]">{pitchDeckName}</span>
-                              <button
-                                type="button"
-                                onClick={() => { setPitchDeckUrl(''); setPitchDeckName(''); }}
-                                className="text-red-500 hover:text-red-700 ml-1"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-[11px] text-slate-400 italic">No file</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Business Idea / Executive Summary *</label>
-                      <textarea
-                        rows={2}
-                        value={businessIdea}
-                        onChange={(e) => setBusinessIdea(e.target.value)}
-                        placeholder="Describe your business idea and venture product summary..."
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Additional Student Remarks (Optional)</label>
-              <textarea
-                rows={2}
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                placeholder="Any relevant note for DPC placement officer..."
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-medium text-slate-800"
-              />
-            </div>
-
-            <div className="pt-2">
-              <label className="flex items-start gap-2 cursor-pointer font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={declared}
-                  onChange={(e) => setDeclared(e.target.checked)}
-                  className="mt-0.5 rounded text-brand-600 h-4 w-4"
-                  required
-                />
-                <span className="text-[11px] leading-relaxed">
-                  I hereby declare that I am submitting verified career pathway documentation to the Department Placement Coordinator (DPC) for official No-Dues clearance.
-                </span>
-              </label>
-            </div>
-
-            <div className="pt-4 border-t border-slate-100 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowSubmitModal(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg shadow-xs flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>{submitting ? 'Submitting...' : 'Confirm & Submit Application'}</span>
-              </button>
-            </div>
-          </form>
+        <Modal 
+          isOpen={showSubmitModal} 
+          onClose={() => setShowSubmitModal(false)} 
+          title={isFourthYear ? "Submit New No-Dues Clearance Application (4th Year Career Verification)" : "Submit New No-Dues Clearance Application"}
+        >
+          {renderFormModalContent()}
         </Modal>
       </div>
     );
@@ -777,488 +801,12 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
       </div>
 
       {/* Submission Form Modal */}
-      <Modal isOpen={showSubmitModal} onClose={() => setShowSubmitModal(false)} title="Submit New No-Dues Clearance Application with Document Upload">
-        <form onSubmit={handleModalSubmit} className="space-y-4 text-xs text-left max-h-[80vh] overflow-y-auto pr-1">
-          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-1">
-            <p><span className="font-semibold text-slate-700">Student Name:</span> {profile?.full_name}</p>
-            <p><span className="font-semibold text-slate-700">Register Number:</span> {profile?.register_number}</p>
-            <p><span className="font-semibold text-slate-700">Department:</span> {profile?.department || 'Information Technology'}</p>
-            <p><span className="font-semibold text-slate-700">Academic Term:</span> Academic Year 2025 - 2026 ({profile?.year || 'IV Year'})</p>
-          </div>
-
-          {/* CAREER PATHWAY SELECTION FOR 4TH YEAR STUDENTS */}
-          <div className="space-y-3 bg-brand-50/40 p-4 rounded-lg border border-brand-200">
-            <label className="block font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-              <Briefcase className="w-4 h-4 text-brand-600" />
-              <span>Select Career Pathway & Upload Required Documents *</span>
-            </label>
-
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              
-              {/* Option A */}
-              <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
-                careerOption === 'Placements' ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
-              }`}>
-                <input
-                  type="radio"
-                  name="careerOption"
-                  value="Placements"
-                  checked={careerOption === 'Placements'}
-                  onChange={(e) => setCareerOption(e.target.value)}
-                  className="text-blue-600"
-                />
-                <span>Option A: Placements</span>
-              </label>
-
-              {/* Option B */}
-              <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
-                careerOption === 'Higher Studies' ? 'bg-purple-50 border-purple-400 text-purple-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
-              }`}>
-                <input
-                  type="radio"
-                  name="careerOption"
-                  value="Higher Studies"
-                  checked={careerOption === 'Higher Studies'}
-                  onChange={(e) => setCareerOption(e.target.value)}
-                  className="text-purple-600"
-                />
-                <span>Option B: Higher Studies</span>
-              </label>
-
-              {/* Option C */}
-              <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
-                careerOption === 'Competitive Exams' ? 'bg-amber-50 border-amber-400 text-amber-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
-              }`}>
-                <input
-                  type="radio"
-                  name="careerOption"
-                  value="Competitive Exams"
-                  checked={careerOption === 'Competitive Exams'}
-                  onChange={(e) => setCareerOption(e.target.value)}
-                  className="text-amber-600"
-                />
-                <span>Option C: Competitive Exams</span>
-              </label>
-
-              {/* Option E */}
-              <label className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
-                careerOption === 'Entrepreneurship' ? 'bg-emerald-50 border-emerald-400 text-emerald-900 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-700'
-              }`}>
-                <input
-                  type="radio"
-                  name="careerOption"
-                  value="Entrepreneurship"
-                  checked={careerOption === 'Entrepreneurship'}
-                  onChange={(e) => setCareerOption(e.target.value)}
-                  className="text-emerald-600"
-                />
-                <span>Option E: Entrepreneurship</span>
-              </label>
-
-            </div>
-
-            {/* DYNAMIC FORM FIELDS BASED ON CAREER OPTION */}
-            
-            {/* Option A: Placements Form */}
-            {careerOption === 'Placements' && (
-              <div className="bg-white p-3.5 rounded-lg border border-blue-200 space-y-3 mt-2">
-                <h5 className="font-bold text-blue-900 flex items-center gap-1.5">
-                  <Briefcase className="w-4 h-4 text-blue-600" />
-                  <span>Option A: Campus Placement Details & Document Upload</span>
-                </h5>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Company Name *</label>
-                    <input
-                      type="text"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                      placeholder="e.g. Zoho Corporation / TCS / Cognizant"
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Job Designation *</label>
-                    <input
-                      type="text"
-                      value={jobDesignation}
-                      onChange={(e) => setJobDesignation(e.target.value)}
-                      placeholder="e.g. Software Engineer / Product Analyst"
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">CTC Package (LPA) *</label>
-                    <input
-                      type="text"
-                      value={ctcPackage}
-                      onChange={(e) => setCtcPackage(e.target.value)}
-                      placeholder="e.g. 8.5 LPA"
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                      required
-                    />
-                  </div>
-
-                  {/* FILE UPLOAD: OFFER LETTER */}
-                  <div className="space-y-1">
-                    <label className="block font-semibold text-slate-700">Upload Offer Letter Document (PDF/Image) *</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="file"
-                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                        onChange={(e) => handleFileUpload(e, setOfferLetterUrl, setOfferLetterName)}
-                        className="hidden"
-                        id="offer-letter-file"
-                      />
-                      <label
-                        htmlFor="offer-letter-file"
-                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 font-semibold border border-blue-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-                      >
-                        <Upload className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Upload File...</span>
-                      </label>
-                      {offerLetterName ? (
-                        <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
-                          <FileText className="w-3.5 h-3.5 text-blue-600" />
-                          <span className="truncate max-w-[130px]">{offerLetterName}</span>
-                          <button
-                            type="button"
-                            onClick={() => { setOfferLetterUrl(''); setOfferLetterName(''); }}
-                            className="text-red-500 hover:text-red-700 ml-1"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-slate-400 italic">No file selected</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Option B: Higher Studies Form */}
-            {careerOption === 'Higher Studies' && (
-              <div className="bg-white p-3.5 rounded-lg border border-purple-200 space-y-3 mt-2">
-                <h5 className="font-bold text-purple-900 flex items-center gap-1.5">
-                  <GraduationCap className="w-4 h-4 text-purple-600" />
-                  <span>Option B: Higher Studies Admission Details & Document Upload</span>
-                </h5>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Target University / College Details *</label>
-                    <input
-                      type="text"
-                      value={higherCollegeName}
-                      onChange={(e) => setHigherCollegeName(e.target.value)}
-                      placeholder="e.g. Carnegie Mellon University / IIT Madras"
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Degree & Program *</label>
-                    <input
-                      type="text"
-                      value={higherDegree}
-                      onChange={(e) => setHigherDegree(e.target.value)}
-                      placeholder="e.g. MS in Computer Science"
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                      required
-                    />
-                  </div>
-                  
-                  {/* FILE UPLOAD: APPLICATION FORM */}
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Upload Application Form *</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="file"
-                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                        onChange={(e) => handleFileUpload(e, setHigherAppFormUrl, setHigherAppFormName)}
-                        className="hidden"
-                        id="higher-app-file"
-                      />
-                      <label
-                        htmlFor="higher-app-file"
-                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-semibold border border-purple-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-                      >
-                        <Upload className="w-3.5 h-3.5 text-purple-600" />
-                        <span>Upload App File...</span>
-                      </label>
-                      {higherAppFormName ? (
-                        <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
-                          <FileText className="w-3.5 h-3.5 text-purple-600" />
-                          <span className="truncate max-w-[120px]">{higherAppFormName}</span>
-                          <button
-                            type="button"
-                            onClick={() => { setHigherAppFormUrl(''); setHigherAppFormName(''); }}
-                            className="text-red-500 hover:text-red-700 ml-1"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-slate-400 italic">No file</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* FILE UPLOAD: SCORECARD */}
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Upload GRE/GATE/TOEFL Scorecard *</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="file"
-                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                        onChange={(e) => handleFileUpload(e, setHigherScorecardUrl, setHigherScorecardName)}
-                        className="hidden"
-                        id="higher-score-file"
-                      />
-                      <label
-                        htmlFor="higher-score-file"
-                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-semibold border border-purple-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-                      >
-                        <Upload className="w-3.5 h-3.5 text-purple-600" />
-                        <span>Upload Scorecard...</span>
-                      </label>
-                      {higherScorecardName ? (
-                        <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
-                          <FileText className="w-3.5 h-3.5 text-purple-600" />
-                          <span className="truncate max-w-[120px]">{higherScorecardName}</span>
-                          <button
-                            type="button"
-                            onClick={() => { setHigherScorecardUrl(''); setHigherScorecardName(''); }}
-                            className="text-red-500 hover:text-red-700 ml-1"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-slate-400 italic">No file</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label className="block font-semibold text-slate-700 mb-1">Contact / Admission Reference Info *</label>
-                    <input
-                      type="text"
-                      value={higherContact}
-                      onChange={(e) => setHigherContact(e.target.value)}
-                      placeholder="e.g. App ID: CMU-2026-9901 | Contact: admissions@cmu.edu"
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Option C: Competitive Exams Form */}
-            {careerOption === 'Competitive Exams' && (
-              <div className="bg-white p-3.5 rounded-lg border border-amber-200 space-y-3 mt-2">
-                <h5 className="font-bold text-amber-900 flex items-center gap-1.5">
-                  <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-                  <span>Option C: Competitive Exam Details & Admit Card Upload</span>
-                </h5>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Exam Name *</label>
-                    <input
-                      type="text"
-                      value={examName}
-                      onChange={(e) => setExamName(e.target.value)}
-                      placeholder="e.g. GATE 2026 CS/IT / CAT 2025 / UPSC"
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Registration / Roll Details *</label>
-                    <input
-                      type="text"
-                      value={examRegNo}
-                      onChange={(e) => setExamRegNo(e.target.value)}
-                      placeholder="e.g. CS26S33012901"
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                      required
-                    />
-                  </div>
-                  
-                  {/* FILE UPLOAD: ADMIT CARD */}
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Upload Admit Card / Scorecard Document *</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="file"
-                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                        onChange={(e) => handleFileUpload(e, setAdmitCardUrl, setAdmitCardName)}
-                        className="hidden"
-                        id="admit-card-file"
-                      />
-                      <label
-                        htmlFor="admit-card-file"
-                        className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold border border-amber-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-                      >
-                        <Upload className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Upload Admit Card...</span>
-                      </label>
-                      {admitCardName ? (
-                        <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
-                          <FileText className="w-3.5 h-3.5 text-amber-600" />
-                          <span className="truncate max-w-[130px]">{admitCardName}</span>
-                          <button
-                            type="button"
-                            onClick={() => { setAdmitCardUrl(''); setAdmitCardName(''); }}
-                            className="text-red-500 hover:text-red-700 ml-1"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-slate-400 italic">No file</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Exam Score / Percentile *</label>
-                    <input
-                      type="text"
-                      value={examDetails}
-                      onChange={(e) => setExamDetails(e.target.value)}
-                      placeholder="e.g. Scored 99.4 percentile in GATE CS"
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Option E: Entrepreneurship Form */}
-            {careerOption === 'Entrepreneurship' && (
-              <div className="bg-white p-3.5 rounded-lg border border-emerald-200 space-y-3 mt-2">
-                <h5 className="font-bold text-emerald-900 flex items-center gap-1.5">
-                  <Lightbulb className="w-4 h-4 text-emerald-600" />
-                  <span>Option E: Entrepreneurship Details & Pitch Deck Upload</span>
-                </h5>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Startup / Business Name *</label>
-                      <input
-                        type="text"
-                        value={startupName}
-                        onChange={(e) => setStartupName(e.target.value)}
-                        placeholder="e.g. Nexus AI Solutions Pvt Ltd"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                        required
-                      />
-                    </div>
-                    
-                    {/* FILE UPLOAD: PITCH DECK */}
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Upload Pitch Deck / Incubation Document *</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="file"
-                          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.ppt,.pptx"
-                          onChange={(e) => handleFileUpload(e, setPitchDeckUrl, setPitchDeckName)}
-                          className="hidden"
-                          id="pitch-deck-file"
-                        />
-                        <label
-                          htmlFor="pitch-deck-file"
-                          className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-                        >
-                          <Upload className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Upload Pitch Deck...</span>
-                        </label>
-                        {pitchDeckName ? (
-                          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
-                            <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="truncate max-w-[130px]">{pitchDeckName}</span>
-                            <button
-                              type="button"
-                              onClick={() => { setPitchDeckUrl(''); setPitchDeckName(''); }}
-                              className="text-red-500 hover:text-red-700 ml-1"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-slate-400 italic">No file</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Business Idea / Executive Summary *</label>
-                    <textarea
-                      rows={2}
-                      value={businessIdea}
-                      onChange={(e) => setBusinessIdea(e.target.value)}
-                      placeholder="Describe your business idea and venture product summary..."
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">Additional Student Remarks (Optional)</label>
-            <textarea
-              rows={2}
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              placeholder="Any relevant note for DPC placement officer..."
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-medium text-slate-800"
-            />
-          </div>
-
-          <div className="pt-2">
-            <label className="flex items-start gap-2 cursor-pointer font-medium text-slate-700">
-              <input
-                type="checkbox"
-                checked={declared}
-                onChange={(e) => setDeclared(e.target.checked)}
-                className="mt-0.5 rounded text-brand-600 h-4 w-4"
-                required
-              />
-              <span className="text-[11px] leading-relaxed">
-                I hereby declare that I am submitting verified career pathway documentation to the Department Placement Coordinator (DPC) for official No-Dues clearance.
-              </span>
-            </label>
-          </div>
-
-          <div className="pt-4 border-t border-slate-100 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSubmitModal(false)}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg shadow-xs flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>{submitting ? 'Submitting...' : 'Confirm & Submit Application'}</span>
-            </button>
-          </div>
-        </form>
+      <Modal 
+        isOpen={showSubmitModal} 
+        onClose={() => setShowSubmitModal(false)} 
+        title={isFourthYear ? "Submit New No-Dues Clearance Application (4th Year Career Verification)" : "Submit New No-Dues Clearance Application"}
+      >
+        {renderFormModalContent()}
       </Modal>
     </div>
   );

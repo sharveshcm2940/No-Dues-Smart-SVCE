@@ -66,6 +66,12 @@ export const DPCDashboard = () => {
       setLoading(false);
     };
     loadAll();
+
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleDPCAction = async (action) => {
@@ -133,6 +139,19 @@ export const DPCDashboard = () => {
         return 'bg-emerald-50 text-emerald-800 border-emerald-200';
       default:
         return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (!window.confirm('Are you sure you want to bulk approve all pending DPC Stage 5 career pathway requests?')) return;
+    try {
+      const res = await api.post('/dpc/bulk-approve');
+      if (res.data.success) {
+        alert(res.data.message);
+        fetchDashboard();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error executing bulk DPC approval.');
     }
   };
 
@@ -295,9 +314,19 @@ export const DPCDashboard = () => {
           {/* TAB 2: STAGE 5 APPROVAL DESK */}
           {activeTab === 'approvals' && (
             <div className="space-y-4">
-              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
-                <h3 className="text-sm font-bold text-slate-800">Stage 5 Department Placement Coordinator Desk</h3>
-                <p className="text-xs text-slate-500">Audit student career documentation (Options A, B, C, E) and grant Stage 5 clearance</p>
+              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Stage 5 Department Placement Coordinator Desk</h3>
+                  <p className="text-xs text-slate-500">Audit student career documentation (Options A, B, C, E) and grant Stage 5 clearance</p>
+                </div>
+
+                <button
+                  onClick={handleBulkApprove}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Bulk Approve All Placement Requests</span>
+                </button>
               </div>
 
               <DataTable

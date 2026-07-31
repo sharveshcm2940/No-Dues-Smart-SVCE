@@ -59,6 +59,63 @@ export const LibraryDashboard = () => {
   const [replyText, setReplyText] = useState('');
   const [ticketStatus, setTicketStatus] = useState('In Progress');
 
+  // Edit Library Metrics State
+  const [showMetricsModal, setShowMetricsModal] = useState(false);
+  const [editTotalBooks, setEditTotalBooks] = useState('');
+  const [editAvailableBooks, setEditAvailableBooks] = useState('');
+  const [editBorrowedBooks, setEditBorrowedBooks] = useState('');
+  const [editPendingReturns, setEditPendingReturns] = useState('');
+  const [savingMetrics, setSavingMetrics] = useState(false);
+
+  const openMetricsModal = () => {
+    if (dashboardData?.stats) {
+      setEditTotalBooks(dashboardData.stats.totalBooks);
+      setEditAvailableBooks(dashboardData.stats.availableBooks);
+      setEditBorrowedBooks(dashboardData.stats.borrowedBooks);
+      setEditPendingReturns(dashboardData.stats.pendingReturns);
+    }
+    setShowMetricsModal(true);
+  };
+
+  const handleSaveMetrics = async (e) => {
+    e.preventDefault();
+    setSavingMetrics(true);
+    try {
+      const res = await api.post('/library/update-metrics', {
+        total_books: editTotalBooks,
+        available_books: editAvailableBooks,
+        borrowed_books: editBorrowedBooks,
+        pending_returns: editPendingReturns
+      });
+      if (res.data.success) {
+        alert(res.data.message);
+        setShowMetricsModal(false);
+        fetchDashboard();
+      }
+    } catch (err) {
+      alert('Failed to update library metrics.');
+    } finally {
+      setSavingMetrics(false);
+    }
+  };
+
+  const handleResetMetrics = async () => {
+    if (!window.confirm('Reset metric statistics to auto-calculated database totals?')) return;
+    setSavingMetrics(true);
+    try {
+      const res = await api.post('/library/update-metrics', { reset_to_auto: true });
+      if (res.data.success) {
+        alert(res.data.message);
+        setShowMetricsModal(false);
+        fetchDashboard();
+      }
+    } catch (err) {
+      alert('Failed to reset library metrics.');
+    } finally {
+      setSavingMetrics(false);
+    }
+  };
+
   // Announcement Form State
   const [ancTitle, setAncTitle] = useState('');
   const [ancDesc, setAncDesc] = useState('');
@@ -141,6 +198,12 @@ export const LibraryDashboard = () => {
       setLoading(false);
     };
     loadAll();
+
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Handlers
@@ -269,6 +332,19 @@ export const LibraryDashboard = () => {
     }
   };
 
+  const handleBulkApprove = async () => {
+    if (!window.confirm('Are you sure you want to bulk approve all eligible student No-Dues requests? (Students with 0 borrowed books and 0 unpaid fines will be cleared automatically)')) return;
+    try {
+      const res = await api.post('/library/bulk-approve');
+      if (res.data.success) {
+        alert(res.data.message);
+        fetchDashboard();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error executing bulk library approval.');
+    }
+  };
+
   if (loading || !dashboardData) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center text-slate-500 font-sans text-xs font-semibold">
@@ -311,7 +387,16 @@ export const LibraryDashboard = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={openMetricsModal}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 transition-colors flex items-center gap-1.5"
+                    title="Edit Catalog & Circulation Stat Numbers"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Edit Metric Totals</span>
+                  </button>
+
                   <button
                     onClick={() => setActiveTab('nodues')}
                     className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
@@ -324,36 +409,56 @@ export const LibraryDashboard = () => {
 
               {/* 8 ERP Metric Stat Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs relative group">
                   <div className="flex items-center justify-between text-slate-500 mb-1">
-                    <span className="text-xs font-bold uppercase tracking-wider">Total Books Catalog</span>
+                    <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                      <span>Total Books Catalog</span>
+                      <button onClick={openMetricsModal} className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-slate-400 hover:text-brand-600" title="Edit value">
+                        <Edit3 className="w-3 h-3" />
+                      </button>
+                    </span>
                     <BookOpen className="w-4 h-4 text-brand-600" />
                   </div>
                   <p className="text-2xl font-extrabold text-slate-900">{stats.totalBooks}</p>
                   <p className="text-[11px] text-slate-500 mt-1">Total physical copies in IT library</p>
                 </div>
 
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs relative group">
                   <div className="flex items-center justify-between text-slate-500 mb-1">
-                    <span className="text-xs font-bold uppercase tracking-wider">Books Available</span>
+                    <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                      <span>Books Available</span>
+                      <button onClick={openMetricsModal} className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-slate-400 hover:text-brand-600" title="Edit value">
+                        <Edit3 className="w-3 h-3" />
+                      </button>
+                    </span>
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   </div>
                   <p className="text-2xl font-extrabold text-slate-900">{stats.availableBooks}</p>
                   <p className="text-[11px] text-slate-500 mt-1">Ready for circulation on shelf</p>
                 </div>
 
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs relative group">
                   <div className="flex items-center justify-between text-slate-500 mb-1">
-                    <span className="text-xs font-bold uppercase tracking-wider">Books Borrowed</span>
+                    <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                      <span>Books Borrowed</span>
+                      <button onClick={openMetricsModal} className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-slate-400 hover:text-brand-600" title="Edit value">
+                        <Edit3 className="w-3 h-3" />
+                      </button>
+                    </span>
                     <Clock className="w-4 h-4 text-brand-600" />
                   </div>
                   <p className="text-2xl font-extrabold text-slate-900">{stats.borrowedBooks}</p>
                   <p className="text-[11px] text-slate-500 mt-1">Issued to IT students</p>
                 </div>
 
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs relative group">
                   <div className="flex items-center justify-between text-slate-500 mb-1">
-                    <span className="text-xs font-bold uppercase tracking-wider">Pending Returns</span>
+                    <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                      <span>Pending Returns</span>
+                      <button onClick={openMetricsModal} className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-slate-400 hover:text-brand-600" title="Edit value">
+                        <Edit3 className="w-3 h-3" />
+                      </button>
+                    </span>
                     <AlertTriangle className="w-4 h-4 text-amber-600" />
                   </div>
                   <p className="text-2xl font-extrabold text-amber-600">{stats.pendingReturns}</p>
@@ -445,11 +550,19 @@ export const LibraryDashboard = () => {
           {/* TAB 2: NO-DUES REQUEST MANAGEMENT */}
           {activeTab === 'nodues' && (
             <div className="space-y-4">
-              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs flex items-center justify-between">
+              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800">No-Dues clearance Desk (Strict Rule Verification)</h3>
+                  <h3 className="text-sm font-bold text-slate-800">No-Dues Clearance Desk (Strict Rule Verification)</h3>
                   <p className="text-xs text-slate-500">Automated verification blocks approval if student has active books or unpaid fine</p>
                 </div>
+
+                <button
+                  onClick={handleBulkApprove}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Bulk Approve All Eligible Dues</span>
+                </button>
               </div>
 
               <DataTable
@@ -494,6 +607,7 @@ export const LibraryDashboard = () => {
                 onClose={() => setShowApprovalModal(false)}
                 requestItem={selectedRequest}
                 onProcessAction={handleProcessNoDues}
+                onRefresh={fetchDashboard}
               />
             </div>
           )}
@@ -929,6 +1043,93 @@ export const LibraryDashboard = () => {
 
         </main>
       </div>
+
+      {/* EDIT LIBRARY METRICS MODAL */}
+      <Modal isOpen={showMetricsModal} onClose={() => setShowMetricsModal(false)} title="Edit Department Library Metric Statistics" maxWidth="max-w-md">
+        <form onSubmit={handleSaveMetrics} className="space-y-4 text-xs">
+          <p className="text-slate-500">
+            Configure custom metric counts for Department Library stat cards. Changes update the live dashboard in real-time.
+          </p>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Total Books Catalog *</label>
+              <input
+                type="number"
+                min="0"
+                value={editTotalBooks}
+                onChange={(e) => setEditTotalBooks(e.target.value)}
+                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium text-slate-800 focus:ring-2 focus:ring-brand-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Books Available *</label>
+              <input
+                type="number"
+                min="0"
+                value={editAvailableBooks}
+                onChange={(e) => setEditAvailableBooks(e.target.value)}
+                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium text-slate-800 focus:ring-2 focus:ring-brand-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Books Borrowed *</label>
+              <input
+                type="number"
+                min="0"
+                value={editBorrowedBooks}
+                onChange={(e) => setEditBorrowedBooks(e.target.value)}
+                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium text-slate-800 focus:ring-2 focus:ring-brand-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Pending Returns *</label>
+              <input
+                type="number"
+                min="0"
+                value={editPendingReturns}
+                onChange={(e) => setEditPendingReturns(e.target.value)}
+                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium text-slate-800 focus:ring-2 focus:ring-brand-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100 gap-2">
+            <button
+              type="button"
+              onClick={handleResetMetrics}
+              disabled={savingMetrics}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded border border-slate-200 text-[11px] transition-colors"
+            >
+              Reset to Auto
+            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowMetricsModal(false)}
+                className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded border border-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingMetrics}
+                className="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded shadow-2xs transition-colors"
+              >
+                {savingMetrics ? 'Saving...' : 'Save Metrics'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

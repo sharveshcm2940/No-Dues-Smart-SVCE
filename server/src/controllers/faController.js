@@ -1,4 +1,5 @@
 const { query, getOne } = require('../config/db');
+const { notifyStudentAndFA } = require('../utils/notifier');
 
 // Get Faculty Advisor (FA) Dashboard Statistics & Advisees
 exports.getFADashboard = async (req, res) => {
@@ -126,11 +127,25 @@ exports.processFAAction = async (req, res) => {
          VALUES (?, ?, ?, ?)`,
         [request.register_number, 'Faculty Advisor Approved', `Your Faculty Advisor ${approverName} approved your No-Dues request ${request.request_number}.`, 'success']
       );
-    } else if (action === 'Reject') {
-      await query(
-        `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Faculty Advisor (Rejected)' WHERE id = ?`,
-        [requestId]
-      );
+    } else if (action === 'Reject' || action === 'Hold') {
+      const isReject = action === 'Reject';
+      const actionText = isReject ? 'rejected' : 'placed on hold';
+
+      if (isReject) {
+        await query(
+          `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Faculty Advisor (Rejected)' WHERE id = ?`,
+          [requestId]
+        );
+      }
+
+      await notifyStudentAndFA({
+        registerNumber: request.register_number,
+        requestNumber: request.request_number,
+        title: `No-Dues Request ${isReject ? 'REJECTED' : 'Put On Hold'} (Faculty Advisor Stage)`,
+        studentMsg: `Your Faculty Advisor ${approverName} ${actionText} your No-Dues request ${request.request_number}. Remarks: ${remarks || 'Dues/Verification required'}`,
+        faMsg: `URGENT ADVISEE ALERT: The No-Dues application (${request.request_number}) of your advisee ${request.student_name} (${request.register_number}) was ${actionText.toUpperCase()} by Faculty Advisor. Remarks: ${remarks || 'Dues/Action required'}`,
+        type: isReject ? 'danger' : 'warning'
+      });
     }
 
     return res.json({ success: true, message: `Request ${request.request_number} marked as ${newStatus} by Faculty Advisor.` });
@@ -138,5 +153,59 @@ exports.processFAAction = async (req, res) => {
   } catch (error) {
     console.error('Process FA Action Error:', error);
     return res.status(500).json({ success: false, message: 'Error processing FA action.' });
+  }
+};
+
+// Bulk Approve All Pending Advisee No-Dues Requests
+exports.bulkApproveAdvisees = async (req, res) => {
+  try {
+    const empId = req.user.username;
+    const fa = await getOne('SELECT full_name FROM faculty_advisors WHERE employee_id = ?', [empId]);
+    const approverName = fa ? `${fa.full_name} (Faculty Advisor)` : 'Faculty Advisor Sign-off';
+
+    const pendingStages = await query(`
+      SELECT ns.request_id, nr.register_number, nr.request_number, nr.year
+      FROM nodues_stages ns
+      JOIN nodues_requests nr ON ns.request_id = nr.id
+      JOIN students s ON nr.register_number = s.register_number
+      WHERE ns.department_name = 'Faculty Advisor' AND ns.status = 'Pending' AND s.advisor_id = ?
+    `, [empId]);
+
+    let count = 0;
+    for (const item of pendingStages) {
+      await query(
+        `UPDATE nodues_stages 
+         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Faculty Advisor.', updated_at = datetime('now') 
+         WHERE request_id = ? AND department_name = 'Faculty Advisor'`,
+        [approverName, item.request_id]
+      );
+
+      const is4thYear = item.year && (item.year.includes('IV') || item.year.includes('4th') || item.year.includes('Fourth') || item.year === 'IV Year');
+      const nextStage = is4thYear ? 'DPC' : 'HOD';
+
+      await query(
+        `UPDATE nodues_stages 
+         SET status = 'Pending', remarks = ? 
+         WHERE request_id = ? AND department_name = ?`,
+        [is4thYear ? 'Awaiting DPC placement officer verification.' : 'Awaiting HOD final approval.', item.request_id, nextStage]
+      );
+
+      await query(
+        `UPDATE nodues_requests 
+         SET progress_percentage = 83, current_stage = ? 
+         WHERE id = ?`,
+        [nextStage, item.request_id]
+      );
+
+      count++;
+    }
+
+    return res.json({
+      success: true,
+      message: `Successfully bulk approved ${count} advisee No-Dues clearance request(s).`
+    });
+  } catch (error) {
+    console.error('Bulk Approve FA Error:', error);
+    return res.status(500).json({ success: false, message: 'Error performing bulk FA approval.' });
   }
 };

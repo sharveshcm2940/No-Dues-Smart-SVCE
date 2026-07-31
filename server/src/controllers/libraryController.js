@@ -1,4 +1,5 @@
 const { query, getOne } = require('../config/db');
+const { notifyStudentAndFA } = require('../utils/notifier');
 
 // Get Library Staff Dashboard Statistics
 exports.getLibraryDashboard = async (req, res) => {
@@ -54,15 +55,47 @@ exports.getLibraryDashboard = async (req, res) => {
       ORDER BY nr.id DESC
     `);
 
+    // Ensure library_metrics table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS library_metrics (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        total_books INTEGER,
+        available_books INTEGER,
+        borrowed_books INTEGER,
+        pending_returns INTEGER,
+        is_custom INTEGER DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    const customMetrics = await getOne('SELECT * FROM library_metrics WHERE id = 1');
+
+    const totalBooksVal = (customMetrics && customMetrics.is_custom && customMetrics.total_books !== null) 
+      ? customMetrics.total_books 
+      : (totalBooks.total || 0);
+
+    const availableBooksVal = (customMetrics && customMetrics.is_custom && customMetrics.available_books !== null) 
+      ? customMetrics.available_books 
+      : (totalBooks.available || 0);
+
+    const borrowedBooksVal = (customMetrics && customMetrics.is_custom && customMetrics.borrowed_books !== null) 
+      ? customMetrics.borrowed_books 
+      : (totalBooks.issued || 0);
+
+    const pendingReturnsVal = (customMetrics && customMetrics.is_custom && customMetrics.pending_returns !== null) 
+      ? customMetrics.pending_returns 
+      : (pendingReturns.count || 0);
+
     return res.json({
       success: true,
       data: {
         staff,
         stats: {
-          totalBooks: totalBooks.total || 0,
-          availableBooks: totalBooks.available || 0,
-          borrowedBooks: totalBooks.issued || 0,
-          pendingReturns: pendingReturns.count || 0,
+          totalBooks: totalBooksVal,
+          availableBooks: availableBooksVal,
+          borrowedBooks: borrowedBooksVal,
+          pendingReturns: pendingReturnsVal,
+          isCustomMetrics: customMetrics ? Boolean(customMetrics.is_custom) : false,
           pendingRequests: deptStageStats.pending_dept_approvals || 0,
           approvedRequests: deptStageStats.approved_dept_approvals || 0,
           rejectedRequests: deptStageStats.rejected_dept_approvals || 0,
@@ -159,17 +192,25 @@ exports.processNoDuesAction = async (req, res) => {
          VALUES (?, ?, ?, ?)`,
         [request.register_number, 'Department Library Approved', `Department Library has approved your No-Dues request ${request.request_number}.`, 'success']
       );
-    } else if (action === 'Reject') {
-      await query(
-        `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Department Library (Rejected)' WHERE id = ?`,
-        [requestId]
-      );
+    } else if (action === 'Reject' || action === 'Hold') {
+      const isReject = action === 'Reject';
+      const actionText = isReject ? 'rejected' : 'placed on hold';
 
-      await query(
-        `INSERT INTO notifications (target_user, title, message, type)
-         VALUES (?, ?, ?, ?)`,
-        [request.register_number, 'No-Dues Request Rejected', `Your No-Dues request ${request.request_number} was rejected by Department Library. Reason: ${remarks}`, 'danger']
-      );
+      if (isReject) {
+        await query(
+          `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Department Library (Rejected)' WHERE id = ?`,
+          [requestId]
+        );
+      }
+
+      await notifyStudentAndFA({
+        registerNumber: request.register_number,
+        requestNumber: request.request_number,
+        title: `No-Dues Request ${isReject ? 'REJECTED' : 'Put On Hold'} (Department Library)`,
+        studentMsg: `Your No-Dues request ${request.request_number} was ${actionText} by Department Library. Reason/Remarks: ${remarks || 'Dues pending'}`,
+        faMsg: `URGENT ADVISEE ALERT: The No-Dues application (${request.request_number}) of your advisee ${request.student_name} (${request.register_number}) was ${actionText.toUpperCase()} by Department Library. Remarks: ${remarks || 'Pending library dues/audit'}`,
+        type: isReject ? 'danger' : 'warning'
+      });
     }
 
     return res.json({
@@ -460,5 +501,180 @@ exports.getReportData = async (req, res) => {
   } catch (error) {
     console.error('Get Report Data Error:', error);
     return res.status(500).json({ success: false, message: 'Error generating report payload.' });
+  }
+};
+
+// Add/Impose Fine on a Student Record
+exports.addFineToStudent = async (req, res) => {
+  try {
+    const { register_number, amount, reason } = req.body;
+
+    if (!register_number || !amount || parseFloat(amount) <= 0) {
+      return res.status(400).json({ success: false, message: 'Valid student register number and fine amount (₹) are required.' });
+    }
+
+    const student = await getOne('SELECT * FROM students WHERE register_number = ?', [register_number]);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student record not found.' });
+    }
+
+    const fineVal = parseFloat(amount);
+    const fineReason = reason || 'Department Library Manual Dues Adjustment';
+
+    // Ensure remarks column exists on borrow_records
+    try {
+      await query(`ALTER TABLE borrow_records ADD COLUMN remarks TEXT`);
+    } catch (e) {
+      // Column may already exist
+    }
+
+    // Insert borrow_records fine ledger entry
+    await query(
+      `INSERT INTO borrow_records (register_number, book_id, issue_date, due_date, return_date, status, fine_amount, fine_status, remarks)
+       VALUES (?, ?, date('now'), date('now'), date('now'), 'Returned', ?, 'Unpaid', ?)`,
+      [register_number, 'LIB-FINE-MANUAL', fineVal, fineReason]
+    );
+
+    // Send Notification to student
+    await query(
+    await notifyStudentAndFA({
+      registerNumber: register_number,
+      title: 'Library Fine Imposed',
+      studentMsg: `Department Library staff imposed a fine of ₹${fineVal}. Reason: ${fineReason}`,
+      faMsg: `ADVISEE DUES WARNING: A library fine of ₹${fineVal} was imposed on your advisee ${student.full_name} (${register_number}). Reason: ${fineReason}`,
+      type: 'warning'
+    });
+
+    return res.json({
+      success: true,
+      message: `Fine of ₹${fineVal} successfully imposed on student ${student.full_name} (${register_number}). Notifications sent to student and Faculty Advisor (${student.advisor_name}).`
+    });
+
+  } catch (error) {
+    console.error('Add Fine Error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Server error imposing fine on student.' });
+  }
+};
+
+// Bulk Approve All Eligible No-Dues Requests
+exports.bulkApproveNoDues = async (req, res) => {
+  try {
+    const staffId = req.user.username;
+    const staff = await getOne('SELECT full_name FROM library_staff WHERE employee_id = ?', [staffId]);
+    const approverName = staff ? `${staff.full_name} (IT Library Officer)` : 'IT Department Library Officer';
+
+    // Get all pending Stage 3 requests
+    const pendingStages = await query(`
+      SELECT ns.request_id, nr.register_number, nr.request_number,
+        (SELECT COUNT(*) FROM borrow_records br WHERE br.register_number = nr.register_number AND br.status = 'Issued') as pending_books,
+        (SELECT COALESCE(SUM(fine_amount), 0) FROM borrow_records br WHERE br.register_number = nr.register_number AND br.fine_status = 'Unpaid') as fine_amount
+      FROM nodues_stages ns
+      JOIN nodues_requests nr ON ns.request_id = nr.id
+      WHERE ns.department_name = 'Department Library' AND ns.status = 'Pending'
+    `);
+
+    let approvedCount = 0;
+    let blockedCount = 0;
+
+    for (const item of pendingStages) {
+      if (item.pending_books > 0 || item.fine_amount > 0) {
+        blockedCount++;
+        continue;
+      }
+
+      await query(
+        `UPDATE nodues_stages 
+         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Department Library.', updated_at = datetime('now') 
+         WHERE request_id = ? AND department_name = 'Department Library'`,
+        [approverName, item.request_id]
+      );
+
+      await query(
+        `UPDATE nodues_stages 
+         SET status = 'Pending', remarks = 'Awaiting Faculty Advisor review.' 
+         WHERE request_id = ? AND department_name = 'Faculty Advisor'`,
+        [item.request_id]
+      );
+
+      await query(
+        `UPDATE nodues_requests 
+         SET progress_percentage = 66, current_stage = 'Faculty Advisor' 
+         WHERE id = ?`,
+        [item.request_id]
+      );
+
+      await query(
+        `INSERT INTO notifications (target_user, title, message, type)
+         VALUES (?, ?, ?, ?)`,
+        [item.register_number, 'Department Library Approved', `Department Library has approved your No-Dues request ${item.request_number}.`, 'success']
+      );
+
+      approvedCount++;
+    }
+
+    return res.json({
+      success: true,
+      message: `Bulk Approval Completed: ${approvedCount} eligible request(s) approved.${blockedCount > 0 ? ` ${blockedCount} request(s) skipped due to pending books/fines.` : ''}`
+    });
+  } catch (error) {
+    console.error('Bulk Approve Library Error:', error);
+    return res.status(500).json({ success: false, message: 'Error performing bulk library approval.' });
+  }
+};
+
+// Update Library Metric Statistics (Total Books, Available, Borrowed, Pending Returns)
+exports.updateLibraryMetrics = async (req, res) => {
+  try {
+    const { total_books, available_books, borrowed_books, pending_returns, reset_to_auto } = req.body;
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS library_metrics (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        total_books INTEGER,
+        available_books INTEGER,
+        borrowed_books INTEGER,
+        pending_returns INTEGER,
+        is_custom INTEGER DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    if (reset_to_auto) {
+      await query(`DELETE FROM library_metrics WHERE id = 1`);
+      return res.json({
+        success: true,
+        message: 'Library metric statistics reset to auto-calculated database totals.'
+      });
+    }
+
+    const t = parseInt(total_books) || 0;
+    const a = parseInt(available_books) || 0;
+    const b = parseInt(borrowed_books) || 0;
+    const p = parseInt(pending_returns) || 0;
+
+    const existing = await getOne('SELECT id FROM library_metrics WHERE id = 1');
+    if (existing) {
+      await query(
+        `UPDATE library_metrics 
+         SET total_books = ?, available_books = ?, borrowed_books = ?, pending_returns = ?, is_custom = 1, updated_at = datetime('now')
+         WHERE id = 1`,
+        [t, a, b, p]
+      );
+    } else {
+      await query(
+        `INSERT INTO library_metrics (id, total_books, available_books, borrowed_books, pending_returns, is_custom)
+         VALUES (1, ?, ?, ?, ?, 1)`,
+        [t, a, b, p]
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: 'Library metric statistics updated successfully.'
+    });
+
+  } catch (error) {
+    console.error('Update Library Metrics Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error updating library metrics.' });
   }
 };

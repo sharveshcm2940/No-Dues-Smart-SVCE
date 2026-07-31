@@ -1,4 +1,5 @@
 const { query, getOne } = require('../config/db');
+const { notifyStudentAndFA } = require('../utils/notifier');
 
 // Get DPC Dashboard Statistics & Submissions
 exports.getDPCDashboard = async (req, res) => {
@@ -118,11 +119,25 @@ exports.processDPCAction = async (req, res) => {
          VALUES (?, ?, ?, ?)`,
         [request.register_number, 'DPC Placement Clearance Approved', `Department Placement Coordinator ${approverName} verified your career submission (${request.career_option}) and granted Stage 5 clearance.`, 'success']
       );
-    } else if (action === 'Reject') {
-      await query(
-        `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Department Placement Coordinator (Rejected)' WHERE id = ?`,
-        [requestId]
-      );
+    } else if (action === 'Reject' || action === 'Hold') {
+      const isReject = action === 'Reject';
+      const actionText = isReject ? 'rejected' : 'placed on hold';
+
+      if (isReject) {
+        await query(
+          `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Department Placement Coordinator (Rejected)' WHERE id = ?`,
+          [requestId]
+        );
+      }
+
+      await notifyStudentAndFA({
+        registerNumber: request.register_number,
+        requestNumber: request.request_number,
+        title: `No-Dues Request ${isReject ? 'REJECTED' : 'Put On Hold'} (DPC Stage)`,
+        studentMsg: `Department Placement Coordinator ${approverName} ${actionText} your Stage 5 career clearance. Remarks: ${remarks || 'Document verification pending'}`,
+        faMsg: `URGENT ADVISEE ALERT: The No-Dues application (${request.request_number}) of your advisee ${request.student_name} (${request.register_number}) was ${actionText.toUpperCase()} by Department Placement Coordinator. Remarks: ${remarks || 'Document verification pending'}`,
+        type: isReject ? 'danger' : 'warning'
+      });
     }
 
     return res.json({ success: true, message: `Request ${request.request_number} marked as ${newStatus} by DPC.` });
@@ -130,5 +145,55 @@ exports.processDPCAction = async (req, res) => {
   } catch (error) {
     console.error('Process DPC Action Error:', error);
     return res.status(500).json({ success: false, message: 'Error processing DPC clearance action.' });
+  }
+};
+
+// Bulk Approve All Pending DPC Stage 5 Requests
+exports.bulkApproveDPC = async (req, res) => {
+  try {
+    const empId = req.user.username;
+    const dpc = await getOne('SELECT full_name FROM dpc_profile WHERE employee_id = ?', [empId]);
+    const approverName = dpc ? `${dpc.full_name} (DPC Coordinator)` : 'DPC Placement Officer';
+
+    const pendingStages = await query(`
+      SELECT ns.request_id, nr.register_number, nr.request_number
+      FROM nodues_stages ns
+      JOIN nodues_requests nr ON ns.request_id = nr.id
+      WHERE ns.department_name = 'DPC' AND ns.status = 'Pending'
+    `);
+
+    let count = 0;
+    for (const item of pendingStages) {
+      await query(
+        `UPDATE nodues_stages 
+         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by DPC Placement Officer.', updated_at = datetime('now') 
+         WHERE request_id = ? AND department_name = 'DPC'`,
+        [approverName, item.request_id]
+      );
+
+      await query(
+        `UPDATE nodues_stages 
+         SET status = 'Pending', remarks = 'Awaiting HOD final approval.' 
+         WHERE request_id = ? AND department_name = 'HOD'`,
+        [item.request_id]
+      );
+
+      await query(
+        `UPDATE nodues_requests 
+         SET progress_percentage = 90, current_stage = 'HOD' 
+         WHERE id = ?`,
+        [item.request_id]
+      );
+
+      count++;
+    }
+
+    return res.json({
+      success: true,
+      message: `Successfully bulk approved ${count} DPC placement clearance request(s).`
+    });
+  } catch (error) {
+    console.error('Bulk Approve DPC Error:', error);
+    return res.status(500).json({ success: false, message: 'Error performing bulk DPC approval.' });
   }
 };
