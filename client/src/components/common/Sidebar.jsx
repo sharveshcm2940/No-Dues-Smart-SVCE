@@ -66,12 +66,29 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
+  const financeNav = [
+    { id: 'dashboard', label: 'ERP Dashboard', icon: LayoutDashboard },
+    { id: 'clearances', label: 'Stage 1 Finance Desk', icon: FileCheck2 },
+    { id: 'reports', label: 'Fee Audit Reports', icon: FileText },
+    { id: 'settings', label: 'Officer Settings', icon: Settings },
+  ];
+
+  const mainLibraryNav = [
+    { id: 'dashboard', label: 'ERP Dashboard', icon: LayoutDashboard },
+    { id: 'clearances', label: 'Stage 2 Central Library', icon: FileCheck2 },
+    { id: 'reports', label: 'Central Library Reports', icon: FileText },
+    { id: 'settings', label: 'Library Settings', icon: Settings },
+  ];
+
   let navItems = studentNav;
   let sectionLabel = 'Student Services';
 
   if (role === 'library_staff') {
     navItems = libraryNav;
     sectionLabel = 'IT Library Desk';
+  } else if (role === 'main_library_staff') {
+    navItems = mainLibraryNav;
+    sectionLabel = 'Central Library Desk';
   } else if (role === 'faculty_advisor') {
     navItems = faNav;
     sectionLabel = 'Faculty Advisor Desk';
@@ -81,6 +98,9 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
   } else if (role === 'dpc') {
     navItems = dpcNav;
     sectionLabel = 'Placement Coordinator Desk';
+  } else if (role === 'finance') {
+    navItems = financeNav;
+    sectionLabel = 'Finance Clearance Desk';
   }
 
   return (

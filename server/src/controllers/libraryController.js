@@ -1,6 +1,11 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
 
+// Parallel workflow: every section receives the request immediately.
+const checkAndAdvanceToFA = async (requestId) => {
+  return requestId;
+};
+
 // Get Library Staff Dashboard Statistics
 exports.getLibraryDashboard = async (req, res) => {
   try {
@@ -52,7 +57,15 @@ exports.getLibraryDashboard = async (req, res) => {
         (SELECT COALESCE(SUM(fine_amount), 0) FROM borrow_records br WHERE br.register_number = nr.register_number AND br.fine_status = 'Unpaid') as fine_amount
       FROM nodues_requests nr
       JOIN nodues_stages ns ON nr.id = ns.request_id AND ns.department_name = 'Department Library'
-      ORDER BY nr.id DESC
+      ORDER BY 
+        CASE nr.year 
+          WHEN 'IV Year' THEN 4 
+          WHEN 'III Year' THEN 3 
+          WHEN 'II Year' THEN 2 
+          WHEN 'I Year' THEN 1 
+          ELSE 0 
+        END DESC, 
+        nr.student_name ASC
     `);
 
     // Ensure library_metrics table exists
@@ -175,23 +188,13 @@ exports.processNoDuesAction = async (req, res) => {
     // If Approved, update progress and unlock next stage (Faculty Advisor)
     if (action === 'Approve') {
       await query(
-        `UPDATE nodues_stages SET status = 'Pending', remarks = 'Awaiting Faculty Advisor review.' 
-         WHERE request_id = ? AND department_name = 'Faculty Advisor'`,
-        [requestId]
-      );
-
-      await query(
-        `UPDATE nodues_requests 
-         SET progress_percentage = 66, current_stage = 'Faculty Advisor'
-         WHERE id = ?`,
-        [requestId]
-      );
-
-      await query(
         `INSERT INTO notifications (target_user, title, message, type)
          VALUES (?, ?, ?, ?)`,
         [request.register_number, 'Department Library Approved', `Department Library has approved your No-Dues request ${request.request_number}.`, 'success']
       );
+
+      // Check parallel clearances
+      await checkAndAdvanceToFA(requestId);
     } else if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
@@ -314,7 +317,15 @@ exports.getStudentRecords = async (req, res) => {
         (SELECT COALESCE(SUM(fine_amount), 0) FROM borrow_records br WHERE br.register_number = s.register_number AND br.fine_status = 'Unpaid') as unpaid_fine,
         (SELECT overall_status FROM nodues_requests nr WHERE nr.register_number = s.register_number ORDER BY id DESC LIMIT 1) as nodues_status
       FROM students s
-      ORDER BY s.id DESC
+      ORDER BY 
+        CASE s.year 
+          WHEN 'IV Year' THEN 4 
+          WHEN 'III Year' THEN 3 
+          WHEN 'II Year' THEN 2 
+          WHEN 'I Year' THEN 1 
+          ELSE 0 
+        END DESC, 
+        s.full_name ASC
     `);
     return res.json({ success: true, students });
   } catch (error) {
@@ -536,7 +547,6 @@ exports.addFineToStudent = async (req, res) => {
     );
 
     // Send Notification to student
-    await query(
     await notifyStudentAndFA({
       registerNumber: register_number,
       title: 'Library Fine Imposed',
@@ -590,25 +600,13 @@ exports.bulkApproveNoDues = async (req, res) => {
       );
 
       await query(
-        `UPDATE nodues_stages 
-         SET status = 'Pending', remarks = 'Awaiting Faculty Advisor review.' 
-         WHERE request_id = ? AND department_name = 'Faculty Advisor'`,
-        [item.request_id]
-      );
-
-      await query(
-        `UPDATE nodues_requests 
-         SET progress_percentage = 66, current_stage = 'Faculty Advisor' 
-         WHERE id = ?`,
-        [item.request_id]
-      );
-
-      await query(
         `INSERT INTO notifications (target_user, title, message, type)
          VALUES (?, ?, ?, ?)`,
         [item.register_number, 'Department Library Approved', `Department Library has approved your No-Dues request ${item.request_number}.`, 'success']
       );
 
+      // Check parallel clearances
+      await checkAndAdvanceToFA(item.request_id);
       approvedCount++;
     }
 

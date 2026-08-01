@@ -704,6 +704,10 @@ export const DPCDashboard = () => {
                 placeholder="Enter career audit remarks (e.g. Offer letter verified with HR, College admit confirmed)..."
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-medium text-slate-800"
               />
+              <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                <span>If Rejected, this message will be sent as a notification to <strong>the Student and their Faculty Advisor</strong> with the reason.</span>
+              </p>
             </div>
 
             {/* Actions */}

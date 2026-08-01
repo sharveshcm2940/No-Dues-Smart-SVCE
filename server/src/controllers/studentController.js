@@ -44,7 +44,7 @@ exports.getStudentDashboard = async (req, res) => {
       // Check if 100% approved
       const allApproved = stages.length > 0 && stages.every(s => s.status === 'Approved');
       if (allApproved && !activeRequest.certificate_number) {
-        const certNo = `CERT-IT-2026-${String(activeRequest.id).padStart(4, '0')}`;
+        const certNo = `CERT-SVCE-IT-2026-${String(activeRequest.id).padStart(4, '0')}`;
         await query(
           `UPDATE nodues_requests SET overall_status = 'Approved', progress_percentage = 100, current_stage = 'Completed', certificate_number = ?, completion_date = datetime('now') WHERE id = ?`,
           [certNo, activeRequest.id]
@@ -152,7 +152,7 @@ exports.submitNoDuesRequest = async (req, res) => {
         startup_name, business_idea, business_details, pitch_deck_url
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 16, 'Finance',
+        reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 16, 'All Sections Review',
         career_option || null, company_name || null, job_designation || null, ctc_package || null, offer_letter_url || null,
         higher_college_name || null, higher_degree || null, higher_app_form_url || null, higher_scorecard_url || null, higher_contact || null,
         exam_name || null, exam_reg_no || null, admit_card_url || null, exam_details || null,
@@ -160,15 +160,13 @@ exports.submitNoDuesRequest = async (req, res) => {
       ]
     );
 
-    const isFourthYearReq = student.year && (student.year.includes('IV') || student.year.includes('4th') || student.year.includes('Fourth') || student.year === 'IV Year');
-
     const stages = [
-      { name: 'Finance', order: 1, status: 'Approved', approved_by: 'Finance Office Automation', remarks: 'Tuition and term fees clear.' },
-      { name: 'Central Library', order: 2, status: 'Approved', approved_by: 'Central Library Portal', remarks: 'Central Library clearance granted.' },
-      { name: 'Department Library', order: 3, status: 'Pending', approved_by: null, remarks: remarks || 'Under verification by IT Dept Library Staff.' },
-      { name: 'Faculty Advisor', order: 4, status: 'Pending', approved_by: null, remarks: 'Awaiting Department Library approval.' },
-      { name: 'DPC', order: 5, status: isFourthYearReq ? 'Pending' : 'Approved', approved_by: isFourthYearReq ? null : 'System Auto-Exempt (1st-3rd Year)', remarks: isFourthYearReq ? (career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting DPC Placement Officer verification.') : 'Non-final year student; DPC placement verification exempted.' },
-      { name: 'HOD', order: 6, status: 'Pending', approved_by: null, remarks: 'Final approval pending.' }
+      { name: 'Finance', order: 1, status: 'Pending', approved_by: null, remarks: 'Awaiting Finance clearance review.' },
+      { name: 'Central Library', order: 2, status: 'Pending', approved_by: null, remarks: 'Awaiting Central Library clearance review.' },
+      { name: 'Department Library', order: 3, status: 'Pending', approved_by: null, remarks: remarks || 'Awaiting Department Library clearance review.' },
+      { name: 'Faculty Advisor', order: 4, status: 'Pending', approved_by: null, remarks: 'Awaiting Faculty Advisor review.' },
+      { name: 'DPC', order: 5, status: 'Pending', approved_by: null, remarks: career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting DPC / placement verification.' },
+      { name: 'HOD', order: 6, status: 'Pending', approved_by: null, remarks: 'Awaiting HOD final review.' }
     ];
 
     for (const s of stages) {

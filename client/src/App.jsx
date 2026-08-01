@@ -6,6 +6,8 @@ import LibraryDashboard from './pages/LibraryDashboard';
 import FADashboard from './pages/FADashboard';
 import HODDashboard from './pages/HODDashboard';
 import DPCDashboard from './pages/DPCDashboard';
+import FinanceDashboard from './pages/FinanceDashboard';
+import MainLibraryDashboard from './pages/MainLibraryDashboard';
 
 const MainAppContent = () => {
   const { user, isAuthenticated } = useAuth();
@@ -32,6 +34,14 @@ const MainAppContent = () => {
 
   if (user.role === 'dpc') {
     return <DPCDashboard />;
+  }
+
+  if (user.role === 'finance') {
+    return <FinanceDashboard />;
+  }
+
+  if (user.role === 'main_library_staff') {
+    return <MainLibraryDashboard />;
   }
 
   return <LoginPage />;

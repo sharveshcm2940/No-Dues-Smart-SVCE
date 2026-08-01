@@ -9,6 +9,9 @@ import {
   ChevronDown, 
   CheckCircle2,
   AlertCircle,
+  XCircle,
+  AlertTriangle,
+  Info,
   Building2,
   Award,
   Crown
@@ -27,12 +30,16 @@ export const Header = ({ notifications = [], activeTab, setActiveTab }) => {
         return { label: 'Student Portal', icon: User, color: 'bg-brand-50 text-brand-700 border-brand-200' };
       case 'library_staff':
         return { label: 'IT Library Desk', icon: ShieldCheck, color: 'bg-purple-50 text-purple-700 border-purple-200' };
+      case 'main_library_staff':
+        return { label: 'Central Library Desk', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
       case 'faculty_advisor':
         return { label: 'Faculty Advisor (FA)', icon: Award, color: 'bg-amber-50 text-amber-800 border-amber-200' };
       case 'hod':
         return { label: 'Head of Dept (HOD)', icon: Crown, color: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
       case 'dpc':
         return { label: 'Placement Coordinator (DPC)', icon: Building2, color: 'bg-blue-50 text-blue-800 border-blue-200' };
+      case 'finance':
+        return { label: 'Finance Section', icon: ShieldCheck, color: 'bg-pink-50 text-pink-800 border-pink-200' };
       default:
         return { label: 'SVCE User', icon: User, color: 'bg-slate-100 text-slate-700' };
     }
@@ -82,37 +89,61 @@ export const Header = ({ notifications = [], activeTab, setActiveTab }) => {
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                  <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-slate-800">SVCE ERP Notifications</h4>
-                    <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
-                      {notifications.length} Total
-                    </span>
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 py-0 z-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      <Bell className="w-4 h-4 text-brand-600" />
+                      SVCE ERP Notifications
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                          {unreadCount} new
+                        </span>
+                      )}
+                      <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
+                        {notifications.length} total
+                      </span>
+                    </div>
                   </div>
-                  <div className="max-h-72 overflow-y-auto divide-y divide-slate-50">
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-50">
                     {notifications.length === 0 ? (
-                      <div className="p-6 text-center text-slate-400 text-xs">
-                        No new notifications.
+                      <div className="p-8 text-center">
+                        <Bell className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                        <p className="text-slate-400 text-xs font-medium">No notifications yet.</p>
                       </div>
                     ) : (
-                      notifications.map((n) => (
-                        <div key={n.id} className="p-3.5 hover:bg-slate-50 transition-colors">
-                          <div className="flex items-start gap-2.5">
-                            {n.type === 'success' ? (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
-                            ) : (
-                              <AlertCircle className="w-4 h-4 text-brand-600 mt-0.5 flex-shrink-0" />
-                            )}
-                            <div>
-                              <p className="text-xs font-semibold text-slate-800">{n.title}</p>
-                              <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{n.message}</p>
-                              <span className="text-[10px] text-slate-400 mt-1 block">
-                                {new Date(n.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
+                      notifications.map((n) => {
+                        const isDanger = n.type === 'danger';
+                        const isWarning = n.type === 'warning';
+                        const isSuccess = n.type === 'success';
+                        const iconProps = isDanger
+                          ? { Icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-l-red-500', rowBg: 'bg-red-50/40' }
+                          : isWarning
+                          ? { Icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-l-amber-500', rowBg: 'bg-amber-50/30' }
+                          : isSuccess
+                          ? { Icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-l-emerald-500', rowBg: '' }
+                          : { Icon: Info, color: 'text-brand-600', bg: 'bg-brand-50', border: 'border-l-brand-400', rowBg: '' };
+                        const { Icon, color, bg, border, rowBg } = iconProps;
+                        return (
+                          <div key={n.id} className={`p-3.5 hover:bg-slate-50 transition-colors border-l-2 ${border} ${rowBg}`}>
+                            <div className="flex items-start gap-2.5">
+                              <div className={`w-7 h-7 rounded-full ${bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+                                <Icon className={`w-4 h-4 ${color}`} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-slate-800 leading-tight">{n.title}</p>
+                                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{n.message}</p>
+                                <span className="text-[10px] text-slate-400 mt-1 block">
+                                  {new Date(n.created_at || Date.now()).toLocaleString('en-IN', { 
+                                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true 
+                                  })}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>

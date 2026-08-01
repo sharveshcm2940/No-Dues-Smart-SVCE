@@ -35,6 +35,10 @@ exports.login = async (req, res) => {
       profileData = await getOne('SELECT * FROM hod_profile WHERE user_id = ?', [user.id]);
     } else if (user.role === 'dpc') {
       profileData = await getOne('SELECT * FROM dpc_profile WHERE user_id = ?', [user.id]);
+    } else if (user.role === 'finance') {
+      profileData = await getOne('SELECT * FROM finance_profile WHERE user_id = ?', [user.id]);
+    } else if (user.role === 'main_library_staff') {
+      profileData = await getOne('SELECT * FROM main_library_profile WHERE user_id = ?', [user.id]);
     }
 
     const token = jwt.sign(
@@ -86,6 +90,10 @@ exports.getCurrentUser = async (req, res) => {
       profileData = await getOne('SELECT * FROM hod_profile WHERE user_id = ?', [user.id]);
     } else if (user.role === 'dpc') {
       profileData = await getOne('SELECT * FROM dpc_profile WHERE user_id = ?', [user.id]);
+    } else if (user.role === 'finance') {
+      profileData = await getOne('SELECT * FROM finance_profile WHERE user_id = ?', [user.id]);
+    } else if (user.role === 'main_library_staff') {
+      profileData = await getOne('SELECT * FROM main_library_profile WHERE user_id = ?', [user.id]);
     }
 
     return res.json({
@@ -122,5 +130,72 @@ exports.updatePassword = async (req, res) => {
   } catch (error) {
     console.error('Update Password Error:', error);
     return res.status(500).json({ success: false, message: 'Server error updating password.' });
+  }
+};
+
+// Handover staff role/position to a new colleague
+exports.handoverPosition = async (req, res) => {
+  try {
+    const { newEmployeeId, newName, newEmail, newPhone, newPassword } = req.body;
+    const currentUserId = req.user.id;
+    const currentUsername = req.user.username; // Current Employee ID
+    const currentRole = req.user.role;
+
+    if (!newEmployeeId || !newName || !newEmail || !newPhone || !newPassword) {
+      return res.status(400).json({ success: false, message: 'All handover details (New Employee ID, Name, Email, Phone, and Password) are required.' });
+    }
+
+    // Check if new Employee ID already exists (excluding the current user)
+    const exists = await getOne('SELECT id FROM users WHERE username = ? AND id != ?', [newEmployeeId, currentUserId]);
+    if (exists) {
+      return res.status(400).json({ success: false, message: `The Employee ID '${newEmployeeId}' is already registered in the system.` });
+    }
+
+    // Determine target profile table based on role
+    let table = '';
+    if (currentRole === 'faculty_advisor') table = 'faculty_advisors';
+    else if (currentRole === 'dpc') table = 'dpc_profile';
+    else if (currentRole === 'hod') table = 'hod_profile';
+    else if (currentRole === 'library_staff') table = 'library_staff';
+    else if (currentRole === 'finance') table = 'finance_profile';
+    else if (currentRole === 'main_library_staff') table = 'main_library_profile';
+
+    if (!table) {
+      return res.status(400).json({ success: false, message: 'Only staff roles can initiate a position handover.' });
+    }
+
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+    // 1. Update the Users login table
+    await query(
+      `UPDATE users SET username = ?, password = ?, email = ? WHERE id = ?`,
+      [newEmployeeId, hashedNewPassword, newEmail, currentUserId]
+    );
+
+    // 2. Update the Profile table
+    await query(
+      `UPDATE ${table} SET employee_id = ?, full_name = ?, email = ?, phone = ? WHERE user_id = ?`,
+      [newEmployeeId, newName, newEmail, newPhone, currentUserId]
+    );
+
+    // 3. For Faculty Advisor Handover: Update all students assigned to this FA
+    if (currentRole === 'faculty_advisor') {
+      await query(
+        `UPDATE students 
+         SET advisor_emp_id = ?, advisor_name = ?, advisor_email = ?, advisor_phone = ? 
+         WHERE advisor_emp_id = ?`,
+        [newEmployeeId, newName, newEmail, newPhone, currentUsername]
+      );
+      console.log(`SVCE ERP: Advisees synced for new Faculty Advisor ${newName} (${newEmployeeId}).`);
+    }
+
+    return res.json({
+      success: true,
+      message: `Successfully transferred position control to ${newName} (${newEmployeeId}). Current session credentials updated; please hand over the new details to the incoming staff member.`
+    });
+
+  } catch (error) {
+    console.error('Handover Position Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error occurred during role transition.' });
   }
 };

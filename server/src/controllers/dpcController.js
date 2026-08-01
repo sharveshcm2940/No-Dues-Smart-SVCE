@@ -15,7 +15,15 @@ exports.getDPCDashboard = async (req, res) => {
        FROM nodues_requests nr
        JOIN students s ON nr.register_number = s.register_number
        WHERE nr.career_option IS NOT NULL
-       ORDER BY nr.id DESC`
+       ORDER BY 
+         CASE s.year 
+           WHEN 'IV Year' THEN 4 
+           WHEN 'III Year' THEN 3 
+           WHEN 'II Year' THEN 2 
+           WHEN 'I Year' THEN 1 
+           ELSE 0 
+         END DESC, 
+         s.full_name ASC`
     );
 
     // Pending Stage 5 DPC Approvals
@@ -29,7 +37,15 @@ exports.getDPCDashboard = async (req, res) => {
       JOIN nodues_stages ns ON nr.id = ns.request_id AND ns.department_name = 'DPC'
       JOIN students s ON nr.register_number = s.register_number
       WHERE ns.status = 'Pending'
-      ORDER BY nr.id DESC`
+      ORDER BY 
+        CASE s.year 
+          WHEN 'IV Year' THEN 4 
+          WHEN 'III Year' THEN 3 
+          WHEN 'II Year' THEN 2 
+          WHEN 'I Year' THEN 1 
+          ELSE 0 
+        END DESC, 
+        s.full_name ASC`
     );
 
     // Approved DPC Requests count
@@ -91,7 +107,7 @@ exports.processDPCAction = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });
     }
 
-    const newStatus = action === 'Approve' ? 'Approved' : 'Rejected';
+    const newStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : 'Hold');
 
     // Update DPC Stage (Stage 5)
     await query(
@@ -102,18 +118,6 @@ exports.processDPCAction = async (req, res) => {
     );
 
     if (action === 'Approve') {
-      // Advance to HOD (Stage 6)
-      await query(
-        `UPDATE nodues_stages SET status = 'Pending', remarks = 'Awaiting Head of Department (HOD) final sign-off.' 
-         WHERE request_id = ? AND department_name = 'HOD'`,
-        [requestId]
-      );
-
-      await query(
-        `UPDATE nodues_requests SET progress_percentage = 83, current_stage = 'HOD Final Approval' WHERE id = ?`,
-        [requestId]
-      );
-
       await query(
         `INSERT INTO notifications (target_user, title, message, type)
          VALUES (?, ?, ?, ?)`,
@@ -169,20 +173,6 @@ exports.bulkApproveDPC = async (req, res) => {
          SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by DPC Placement Officer.', updated_at = datetime('now') 
          WHERE request_id = ? AND department_name = 'DPC'`,
         [approverName, item.request_id]
-      );
-
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Pending', remarks = 'Awaiting HOD final approval.' 
-         WHERE request_id = ? AND department_name = 'HOD'`,
-        [item.request_id]
-      );
-
-      await query(
-        `UPDATE nodues_requests 
-         SET progress_percentage = 90, current_stage = 'HOD' 
-         WHERE id = ?`,
-        [item.request_id]
       );
 
       count++;
