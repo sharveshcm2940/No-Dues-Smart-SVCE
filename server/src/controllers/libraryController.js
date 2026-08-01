@@ -535,8 +535,7 @@ exports.addFineToStudent = async (req, res) => {
       [register_number, 'LIB-FINE-MANUAL', fineVal, fineReason]
     );
 
-    // Send Notification to student
-    await query(
+    // Send Notification to student and Faculty Advisor
     await notifyStudentAndFA({
       registerNumber: register_number,
       title: 'Library Fine Imposed',
