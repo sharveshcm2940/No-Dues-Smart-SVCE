@@ -1,5 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
+const { updateRequestProgress } = require('../utils/workflowHelper');
 
 // Get Faculty Advisor (FA) Dashboard Statistics & Advisees
 exports.getFADashboard = async (req, res) => {
@@ -124,6 +125,9 @@ exports.processFAAction = async (req, res) => {
          VALUES (?, ?, ?, ?)`,
         [request.register_number, 'Faculty Advisor Approved', `Your Faculty Advisor ${approverName} approved your No-Dues request ${request.request_number}.`, 'success']
       );
+
+      // Advance stage to DPC or HOD
+      await updateRequestProgress(requestId);
     } else if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
@@ -179,15 +183,16 @@ exports.bulkApproveAdvisees = async (req, res) => {
         [approverName, item.request_id]
       );
 
+      await updateRequestProgress(item.request_id);
       count++;
     }
 
     return res.json({
       success: true,
-      message: `Successfully bulk approved ${count} advisee No-Dues clearance request(s).`
+      message: `Successfully granted Faculty Advisor approval for ${count} advisee request(s).`
     });
   } catch (error) {
     console.error('Bulk Approve FA Error:', error);
-    return res.status(500).json({ success: false, message: 'Error performing bulk FA approval.' });
+    return res.status(500).json({ success: false, message: 'Error executing bulk Faculty Advisor approval.' });
   }
 };

@@ -1,5 +1,6 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { AlertProvider } from './context/AlertContext';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
 import LibraryDashboard from './pages/LibraryDashboard';
@@ -49,9 +50,11 @@ const MainAppContent = () => {
 
 export function App() {
   return (
-    <AuthProvider>
-      <MainAppContent />
-    </AuthProvider>
+    <AlertProvider>
+      <AuthProvider>
+        <MainAppContent />
+      </AuthProvider>
+    </AlertProvider>
   );
 }
 

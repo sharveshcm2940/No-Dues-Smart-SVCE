@@ -16,9 +16,11 @@ export const DataTable = ({
 
   // Search and Filter Logic
   const filteredData = data.filter((row) => {
-    const matchesSearch = Object.values(row).some((val) =>
-      String(val || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const matchesSearch = Object.values(row).some((val) => {
+      if (val === null || val === undefined) return false;
+      if (typeof val === 'object') return false;
+      return String(val).toLowerCase().includes(searchTerm.toLowerCase());
+    });
 
     const matchesFilter =
       selectedFilter === 'ALL' ||

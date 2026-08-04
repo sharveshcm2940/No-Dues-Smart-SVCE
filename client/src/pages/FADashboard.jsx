@@ -29,7 +29,10 @@ import {
   ExternalLink
 } from 'lucide-react';
 
+import { useAlert } from '../context/AlertContext';
+
 export const FADashboard = () => {
+  const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -134,17 +137,18 @@ export const FADashboard = () => {
     );
   }
 
-  const handleBulkApprove = async () => {
-    if (!window.confirm('Are you sure you want to bulk approve all pending No-Dues requests for your assigned advisees?')) return;
-    try {
-      const res = await api.post('/fa/bulk-approve');
-      if (res.data.success) {
-        alert(res.data.message);
-        fetchDashboard();
+  const handleBulkApprove = () => {
+    showConfirm('Are you sure you want to bulk approve all pending No-Dues requests for your assigned advisees?', async () => {
+      try {
+        const res = await api.post('/fa/bulk-approve');
+        if (res.data.success) {
+          showAlert(res.data.message);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error executing bulk FA approval.', 'danger');
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error executing bulk FA approval.');
-    }
+    });
   };
 
   const { advisor, stats, advisees, pendingFARequests } = dashboardData;

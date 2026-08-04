@@ -24,7 +24,10 @@ import {
   Building
 } from 'lucide-react';
 
+import { useAlert } from '../context/AlertContext';
+
 export const DPCDashboard = () => {
+  const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -142,17 +145,18 @@ export const DPCDashboard = () => {
     }
   };
 
-  const handleBulkApprove = async () => {
-    if (!window.confirm('Are you sure you want to bulk approve all pending DPC Stage 5 career pathway requests?')) return;
-    try {
-      const res = await api.post('/dpc/bulk-approve');
-      if (res.data.success) {
-        alert(res.data.message);
-        fetchDashboard();
+  const handleBulkApprove = () => {
+    showConfirm('Are you sure you want to bulk approve all pending DPC Stage 5 career pathway requests?', async () => {
+      try {
+        const res = await api.post('/dpc/bulk-approve');
+        if (res.data.success) {
+          showAlert(res.data.message);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error executing bulk DPC approval.', 'danger');
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error executing bulk DPC approval.');
-    }
+    });
   };
 
   return (

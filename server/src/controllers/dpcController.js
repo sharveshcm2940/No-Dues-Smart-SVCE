@@ -1,5 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
+const { updateRequestProgress } = require('../utils/workflowHelper');
 
 // Get DPC Dashboard Statistics & Submissions
 exports.getDPCDashboard = async (req, res) => {
@@ -123,6 +124,9 @@ exports.processDPCAction = async (req, res) => {
          VALUES (?, ?, ?, ?)`,
         [request.register_number, 'DPC Placement Clearance Approved', `Department Placement Coordinator ${approverName} verified your career submission (${request.career_option}) and granted Stage 5 clearance.`, 'success']
       );
+
+      // Advance stage to HOD
+      await updateRequestProgress(requestId);
     } else if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
@@ -175,15 +179,16 @@ exports.bulkApproveDPC = async (req, res) => {
         [approverName, item.request_id]
       );
 
+      await updateRequestProgress(item.request_id);
       count++;
     }
 
     return res.json({
       success: true,
-      message: `Successfully bulk approved ${count} DPC placement clearance request(s).`
+      message: `Successfully granted DPC career verification approval for ${count} request(s).`
     });
   } catch (error) {
     console.error('Bulk Approve DPC Error:', error);
-    return res.status(500).json({ success: false, message: 'Error performing bulk DPC approval.' });
+    return res.status(500).json({ success: false, message: 'Error performing bulk DPC clearance approval.' });
   }
 };

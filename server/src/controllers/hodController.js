@@ -1,5 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
+const { updateRequestProgress } = require('../utils/workflowHelper');
 
 // Get HOD Executive Overview Dashboard Statistics
 exports.getHODDashboard = async (req, res) => {
@@ -120,8 +121,6 @@ exports.processHODAction = async (req, res) => {
     }
 
     if (action === 'Approve') {
-      const certNo = `CERT-SVCE-IT-2026-${String(request.id).padStart(4, '0')}`;
-
       // Update HOD Stage
       await query(
         `UPDATE nodues_stages 
@@ -130,28 +129,18 @@ exports.processHODAction = async (req, res) => {
         [approverName, remarks || 'Head of Department approval granted.', requestId]
       );
 
-      const pendingStages = await getOne(
-        `SELECT COUNT(*) as count FROM nodues_stages WHERE request_id = ? AND status != 'Approved'`,
-        [requestId]
-      );
+      const result = await updateRequestProgress(requestId);
 
-      if ((pendingStages.count || 0) === 0) {
-        await query(
-          `UPDATE nodues_requests 
-           SET overall_status = 'Approved', progress_percentage = 100, current_stage = 'Completed', certificate_number = ?, completion_date = datetime('now')
-           WHERE id = ?`,
-          [certNo, requestId]
-        );
-
+      if (result && result.status === 'Approved') {
         await query(
           `INSERT INTO notifications (target_user, title, message, type)
            VALUES (?, ?, ?, ?)`,
-          [request.register_number, 'No-Dues Clearance Completed!', `All sections have approved your request. Your official SVCE Digital Certificate ${certNo} is now ready for download!`, 'success']
+          [request.register_number, 'No-Dues Clearance Completed!', `All sections have approved your request. Your official SVCE Digital Certificate ${result.certificateNumber} is now ready for download!`, 'success']
         );
 
         return res.json({
           success: true,
-          message: `Request ${request.request_number} fully approved. Digital Certificate ${certNo} generated!`
+          message: `Request ${request.request_number} fully approved. Digital Certificate ${result.certificateNumber} generated!`
         });
       }
 
@@ -211,8 +200,6 @@ exports.bulkApproveHOD = async (req, res) => {
 
     let count = 0;
     for (const item of pendingStages) {
-      const certNo = `CERT-SVCE-IT-2026-${String(item.request_id).padStart(4, '0')}`;
-
       await query(
         `UPDATE nodues_stages 
          SET status = 'Approved', approved_by = ?, remarks = 'Bulk HOD approval granted.', updated_at = datetime('now') 
@@ -220,20 +207,7 @@ exports.bulkApproveHOD = async (req, res) => {
         [approverName, item.request_id]
       );
 
-      const pendingStages = await getOne(
-        `SELECT COUNT(*) as count FROM nodues_stages WHERE request_id = ? AND status != 'Approved'`,
-        [item.request_id]
-      );
-
-      if ((pendingStages.count || 0) === 0) {
-        await query(
-          `UPDATE nodues_requests 
-           SET overall_status = 'Approved', progress_percentage = 100, current_stage = 'Completed', certificate_number = ?, completion_date = datetime('now') 
-           WHERE id = ?`,
-          [certNo, item.request_id]
-        );
-      }
-
+      await updateRequestProgress(item.request_id);
       count++;
     }
 
@@ -262,21 +236,21 @@ exports.bulkRegisterStudents = async (req, res) => {
     let skippedCount = 0;
 
     for (const s of studentsList) {
-      const regNo = s.register_number || s.regNo;
-      const name = s.full_name || s.name;
+      const regNo = (s.register_number || s.regNo || '').trim();
+      const name = (s.full_name || s.name || '').trim();
+      if (!regNo || !name) {
+        skippedCount++;
+        continue;
+      }
+
       const email = s.email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@svce.ac.in`;
-      const idCard = s.id_card_number || s.idCard || `SVCE-IT-${regNo.slice(-3)}`;
+      const idCard = s.id_card_number || s.idCard || `SVCE-IT-${regNo.length >= 3 ? regNo.slice(-3) : regNo}`;
       const phone = s.phone || '+91 99999 88888';
       const year = s.year || 'IV Year';
       const section = s.section || 'Sec-A';
       const batch = s.batch || '2022-2026';
       const advEmp = s.advisor_emp_id || s.advisorEmp || 'EMP-FA-IT-01';
       const advName = s.advisor_name || s.advisorName || 'V.Praveen Kumar';
-
-      if (!regNo || !name) {
-        skippedCount++;
-        continue;
-      }
 
       // Query advisor details for email and phone syncing
       const fa = await getOne('SELECT email, phone FROM faculty_advisors WHERE employee_id = ?', [advEmp]);
@@ -426,4 +400,3 @@ exports.clearAllStudents = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Error performing complete student wipe.' });
   }
 };
-

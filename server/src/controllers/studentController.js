@@ -1,4 +1,5 @@
 const { query, getOne } = require('../config/db');
+const { updateRequestProgress } = require('../utils/workflowHelper');
 
 // Get Student Dashboard Data
 exports.getStudentDashboard = async (req, res) => {
@@ -27,33 +28,24 @@ exports.getStudentDashboard = async (req, res) => {
     );
 
     // Active No-Dues Request & Stages
-    const activeRequest = await getOne(
+    let activeRequest = await getOne(
       `SELECT * FROM nodues_requests WHERE register_number = ? ORDER BY id DESC LIMIT 1`,
       [regNo]
     );
 
     let stages = [];
-    let certificate = null;
 
     if (activeRequest) {
+      await updateRequestProgress(activeRequest.id);
+      activeRequest = await getOne(
+        `SELECT * FROM nodues_requests WHERE id = ?`,
+        [activeRequest.id]
+      );
+
       stages = await query(
         `SELECT * FROM nodues_stages WHERE request_id = ? ORDER BY stage_order ASC`,
         [activeRequest.id]
       );
-
-      // Check if 100% approved
-      const allApproved = stages.length > 0 && stages.every(s => s.status === 'Approved');
-      if (allApproved && !activeRequest.certificate_number) {
-        const certNo = `CERT-SVCE-IT-2026-${String(activeRequest.id).padStart(4, '0')}`;
-        await query(
-          `UPDATE nodues_requests SET overall_status = 'Approved', progress_percentage = 100, current_stage = 'Completed', certificate_number = ?, completion_date = datetime('now') WHERE id = ?`,
-          [certNo, activeRequest.id]
-        );
-        activeRequest.overall_status = 'Approved';
-        activeRequest.progress_percentage = 100;
-        activeRequest.current_stage = 'Completed';
-        activeRequest.certificate_number = certNo;
-      }
     }
 
     // Dept Library Clearance Status Calculation
@@ -101,7 +93,6 @@ exports.submitNoDuesRequest = async (req, res) => {
   try {
     const regNo = req.user.username;
     const { 
-      forceNew, 
       remarks,
       career_option,
       company_name,
@@ -123,15 +114,30 @@ exports.submitNoDuesRequest = async (req, res) => {
       pitch_deck_url
     } = req.body || {};
 
-    // Check if student has active request
-    const existingReq = await getOne(
+    // 1. Check if student already has an active No-Dues request in progress
+    const inProgressReq = await getOne(
       `SELECT * FROM nodues_requests WHERE register_number = ? AND overall_status = 'In Progress'`,
       [regNo]
     );
 
-    if (existingReq) {
-      await query(`DELETE FROM nodues_stages WHERE request_id = ?`, [existingReq.id]);
-      await query(`DELETE FROM nodues_requests WHERE id = ?`, [existingReq.id]);
+    if (inProgressReq) {
+      return res.status(400).json({
+        success: false,
+        message: `You already have an active No-Dues request (${inProgressReq.request_number}) in progress. A student can only apply for one No-Dues request at a time.`
+      });
+    }
+
+    // 2. Check if student already has an approved request
+    const approvedReq = await getOne(
+      `SELECT * FROM nodues_requests WHERE register_number = ? AND overall_status = 'Approved'`,
+      [regNo]
+    );
+
+    if (approvedReq) {
+      return res.status(400).json({
+        success: false,
+        message: `Your No-Dues clearance application (${approvedReq.request_number}) has already been fully approved and completed.`
+      });
     }
 
     const student = await getOne('SELECT * FROM students WHERE register_number = ?', [regNo]);
@@ -152,7 +158,7 @@ exports.submitNoDuesRequest = async (req, res) => {
         startup_name, business_idea, business_details, pitch_deck_url
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 16, 'All Sections Review',
+        reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 0, 'Parallel Section Review (Finance / Central Library / Dept Library)',
         career_option || null, company_name || null, job_designation || null, ctc_package || null, offer_letter_url || null,
         higher_college_name || null, higher_degree || null, higher_app_form_url || null, higher_scorecard_url || null, higher_contact || null,
         exam_name || null, exam_reg_no || null, admit_card_url || null, exam_details || null,
@@ -160,12 +166,14 @@ exports.submitNoDuesRequest = async (req, res) => {
       ]
     );
 
+    const isFourthYear = student.year && (student.year.includes('IV') || student.year.includes('4th'));
+
     const stages = [
       { name: 'Finance', order: 1, status: 'Pending', approved_by: null, remarks: 'Awaiting Finance clearance review.' },
       { name: 'Central Library', order: 2, status: 'Pending', approved_by: null, remarks: 'Awaiting Central Library clearance review.' },
       { name: 'Department Library', order: 3, status: 'Pending', approved_by: null, remarks: remarks || 'Awaiting Department Library clearance review.' },
       { name: 'Faculty Advisor', order: 4, status: 'Pending', approved_by: null, remarks: 'Awaiting Faculty Advisor review.' },
-      { name: 'DPC', order: 5, status: 'Pending', approved_by: null, remarks: career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting DPC / placement verification.' },
+      { name: 'DPC', order: 5, status: isFourthYear ? 'Pending' : 'Approved', approved_by: isFourthYear ? null : 'System (Auto-Cleared)', remarks: isFourthYear ? (career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting DPC / placement verification.') : 'Not applicable for non-final year students.' },
       { name: 'HOD', order: 6, status: 'Pending', approved_by: null, remarks: 'Awaiting HOD final review.' }
     ];
 
@@ -176,6 +184,9 @@ exports.submitNoDuesRequest = async (req, res) => {
         [newReq.lastID, s.name, s.order, s.status, s.approved_by, s.remarks]
       );
     }
+
+    // Automatically calculate initial progress
+    await updateRequestProgress(newReq.lastID);
 
     await query(
       `INSERT INTO notifications (target_user, title, message, type)
@@ -286,13 +297,14 @@ exports.createComplaint = async (req, res) => {
     }
 
     const student = await getOne('SELECT full_name FROM students WHERE register_number = ?', [regNo]);
-    const count = await getOne('SELECT COUNT(*) as count FROM complaints');
-    const cmpId = `CMP-IT-2026-${String(count.count + 1).padStart(2, '0')}`;
+    const maxIdRow = await getOne('SELECT MAX(id) as max_id FROM complaints');
+    const nextNum = (maxIdRow && maxIdRow.max_id ? maxIdRow.max_id : 0) + 1;
+    const cmpId = `CMP-IT-2026-${String(nextNum).padStart(3, '0')}`;
 
     await query(
       `INSERT INTO complaints (complaint_id, register_number, student_name, category, title, description, attachment_url, priority, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [cmpId, regNo, student.full_name, category, title, description, attachmentUrl || null, priority || 'Medium', 'Open']
+      [cmpId, regNo, student ? student.full_name : 'Student', category, title, description, attachmentUrl || null, priority || 'Medium', 'Open']
     );
 
     return res.json({ success: true, message: 'Complaint registered successfully.', complaintId: cmpId });
@@ -315,13 +327,13 @@ exports.getAnnouncements = async (req, res) => {
   }
 };
 
-// Get User Notifications (Student, FA, Staff, DPC, HOD)
+// Get User Notifications (Student, FA, Staff, DPC, HOD, Finance, Main Library)
 exports.getNotifications = async (req, res) => {
   try {
     const username = req.user.username;
     const role = req.user.role;
 
-    let possibleTargets = [username];
+    let possibleTargets = [username, role];
 
     if (role === 'student') {
       const student = await getOne('SELECT register_number, email FROM students WHERE user_id = ? OR register_number = ?', [req.user.id, username]);
@@ -335,6 +347,41 @@ exports.getNotifications = async (req, res) => {
         if (fa.employee_id) possibleTargets.push(fa.employee_id);
         if (fa.email) possibleTargets.push(fa.email);
         if (fa.full_name) possibleTargets.push(fa.full_name);
+      }
+    } else if (role === 'hod') {
+      const hod = await getOne('SELECT employee_id, email, full_name FROM hod_profile WHERE user_id = ? OR employee_id = ?', [req.user.id, username]);
+      if (hod) {
+        if (hod.employee_id) possibleTargets.push(hod.employee_id);
+        if (hod.email) possibleTargets.push(hod.email);
+        if (hod.full_name) possibleTargets.push(hod.full_name);
+      }
+    } else if (role === 'dpc') {
+      const dpc = await getOne('SELECT employee_id, email, full_name FROM dpc_profile WHERE user_id = ? OR employee_id = ?', [req.user.id, username]);
+      if (dpc) {
+        if (dpc.employee_id) possibleTargets.push(dpc.employee_id);
+        if (dpc.email) possibleTargets.push(dpc.email);
+        if (dpc.full_name) possibleTargets.push(dpc.full_name);
+      }
+    } else if (role === 'finance') {
+      const fin = await getOne('SELECT employee_id, email, full_name FROM finance_profile WHERE user_id = ? OR employee_id = ?', [req.user.id, username]);
+      if (fin) {
+        if (fin.employee_id) possibleTargets.push(fin.employee_id);
+        if (fin.email) possibleTargets.push(fin.email);
+        if (fin.full_name) possibleTargets.push(fin.full_name);
+      }
+    } else if (role === 'main_library_staff') {
+      const ml = await getOne('SELECT employee_id, email, full_name FROM main_library_profile WHERE user_id = ? OR employee_id = ?', [req.user.id, username]);
+      if (ml) {
+        if (ml.employee_id) possibleTargets.push(ml.employee_id);
+        if (ml.email) possibleTargets.push(ml.email);
+        if (ml.full_name) possibleTargets.push(ml.full_name);
+      }
+    } else if (role === 'library_staff') {
+      const ls = await getOne('SELECT employee_id, email, full_name FROM library_staff WHERE user_id = ? OR employee_id = ?', [req.user.id, username]);
+      if (ls) {
+        if (ls.employee_id) possibleTargets.push(ls.employee_id);
+        if (ls.email) possibleTargets.push(ls.email);
+        if (ls.full_name) possibleTargets.push(ls.full_name);
       }
     }
 

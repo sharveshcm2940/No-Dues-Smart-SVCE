@@ -687,21 +687,29 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setShowSubmitModal(true)}
-            className="px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Submit New Request</span>
-          </button>
+          {activeRequest.overall_status === 'Rejected' && (
+            <button
+              onClick={() => setShowSubmitModal(true)}
+              className="px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Re-apply for No-Dues</span>
+            </button>
+          )}
 
           {activeRequest.overall_status === 'In Progress' && (
-            <button
-              onClick={() => onCancelRequest(activeRequest.id)}
-              className="px-3.5 py-1.5 border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold rounded-lg transition-colors"
-            >
-              Cancel Request
-            </button>
+            <>
+              <div className="flex items-center gap-1.5 bg-blue-50 text-blue-800 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-semibold">
+                <Clock className="w-3.5 h-3.5 text-blue-600" />
+                <span>1 Active Application Limit (In Progress)</span>
+              </div>
+              <button
+                onClick={() => onCancelRequest(activeRequest.id)}
+                className="px-3.5 py-1.5 border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold rounded-lg transition-colors"
+              >
+                Cancel Request
+              </button>
+            </>
           )}
 
           {activeRequest.overall_status === 'Approved' && (

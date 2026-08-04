@@ -1,10 +1,6 @@
-﻿const { query, getOne } = require('../config/db');
+const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-
-// Parallel workflow: every section receives the request immediately.
-const checkAndAdvanceToFA = async (requestId) => {
-  return requestId;
-};
+const { updateRequestProgress } = require('../utils/workflowHelper');
 
 // Get Main Library Dashboard Stats & Requests
 exports.getMainLibraryDashboard = async (req, res) => {
@@ -119,7 +115,7 @@ exports.processMainLibraryAction = async (req, res) => {
       );
 
       // Check parallel clearance to unlock FA
-      await checkAndAdvanceToFA(requestId);
+      await updateRequestProgress(requestId);
     } else if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
@@ -178,7 +174,7 @@ exports.bulkApproveMainLibrary = async (req, res) => {
         [item.register_number, 'Central Library Approved', `Main Library staff cleared your No-Dues request ${item.request_number}.`, 'success']
       );
 
-      await checkAndAdvanceToFA(item.request_id);
+      await updateRequestProgress(item.request_id);
       count++;
     }
 

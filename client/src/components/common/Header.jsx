@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import SVCELogo from './SVCELogo';
+import api from '../../services/api';
 import { 
   Bell, 
   ShieldCheck, 
@@ -14,15 +15,41 @@ import {
   Info,
   Building2,
   Award,
-  Crown
+  Crown,
+  CheckCheck
 } from 'lucide-react';
 
-export const Header = ({ notifications = [], activeTab, setActiveTab }) => {
+export const Header = ({ notifications: propNotifications = null, activeTab, setActiveTab }) => {
   const { user, logout } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [liveNotifications, setLiveNotifications] = useState([]);
 
-  const unreadCount = notifications.filter(n => !n.is_read).length;
+  // Fetch real-time notifications every 4 seconds
+  const fetchLiveNotifications = async () => {
+    try {
+      const res = await api.get('/student/notifications');
+      if (res.data.success) {
+        setLiveNotifications(res.data.notifications || []);
+      }
+    } catch (err) {
+      // Silent catch for background polling
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    fetchLiveNotifications();
+    const interval = setInterval(fetchLiveNotifications, 4000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const activeNotifications = propNotifications && propNotifications.length > 0 ? propNotifications : liveNotifications;
+  const unreadCount = activeNotifications.filter(n => !n.is_read).length;
+
+  const markAllAsRead = () => {
+    setLiveNotifications(prev => prev.map(n => ({ ...n, is_read: 1 })));
+  };
 
   const getRoleBadge = (role) => {
     switch (role) {
@@ -75,12 +102,12 @@ export const Header = ({ notifications = [], activeTab, setActiveTab }) => {
               <span>{roleInfo.label}</span>
             </div>
 
-            {/* Notification Bell with Drawer */}
+            {/* Notification Bell with Real-time Drawer */}
             <div className="relative">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
                 className="relative p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                title="Notifications"
+                title="Real-Time Notifications"
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
@@ -89,7 +116,7 @@ export const Header = ({ notifications = [], activeTab, setActiveTab }) => {
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 py-0 z-50 overflow-hidden">
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 py-0 z-50 overflow-hidden text-left animate-in fade-in duration-150">
                   <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                     <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                       <Bell className="w-4 h-4 text-brand-600" />
@@ -97,49 +124,50 @@ export const Header = ({ notifications = [], activeTab, setActiveTab }) => {
                     </h4>
                     <div className="flex items-center gap-2">
                       {unreadCount > 0 && (
-                        <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold animate-pulse">
-                          {unreadCount} new
-                        </span>
+                        <button
+                          onClick={markAllAsRead}
+                          className="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-bold transition-colors flex items-center gap-1"
+                        >
+                          <CheckCheck className="w-3 h-3" />
+                          <span>Mark read</span>
+                        </button>
                       )}
                       <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
-                        {notifications.length} total
+                        {activeNotifications.length} live
                       </span>
                     </div>
                   </div>
                   <div className="max-h-80 overflow-y-auto divide-y divide-slate-50">
-                    {notifications.length === 0 ? (
+                    {activeNotifications.length === 0 ? (
                       <div className="p-8 text-center">
                         <Bell className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                        <p className="text-slate-400 text-xs font-medium">No notifications yet.</p>
+                        <p className="text-slate-400 text-xs font-medium">No notifications available.</p>
                       </div>
                     ) : (
-                      notifications.map((n) => {
+                      activeNotifications.map((n) => {
                         const isDanger = n.type === 'danger';
                         const isWarning = n.type === 'warning';
                         const isSuccess = n.type === 'success';
-                        const iconProps = isDanger
-                          ? { Icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-l-red-500', rowBg: 'bg-red-50/40' }
-                          : isWarning
-                          ? { Icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-l-amber-500', rowBg: 'bg-amber-50/30' }
-                          : isSuccess
-                          ? { Icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-l-emerald-500', rowBg: '' }
-                          : { Icon: Info, color: 'text-brand-600', bg: 'bg-brand-50', border: 'border-l-brand-400', rowBg: '' };
-                        const { Icon, color, bg, border, rowBg } = iconProps;
+
                         return (
-                          <div key={n.id} className={`p-3.5 hover:bg-slate-50 transition-colors border-l-2 ${border} ${rowBg}`}>
-                            <div className="flex items-start gap-2.5">
-                              <div className={`w-7 h-7 rounded-full ${bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
-                                <Icon className={`w-4 h-4 ${color}`} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-bold text-slate-800 leading-tight">{n.title}</p>
-                                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{n.message}</p>
-                                <span className="text-[10px] text-slate-400 mt-1 block">
-                                  {new Date(n.created_at || Date.now()).toLocaleString('en-IN', { 
-                                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true 
-                                  })}
+                          <div 
+                            key={n.id || Math.random()} 
+                            className={`p-3.5 hover:bg-slate-50 transition-colors flex items-start gap-3 ${!n.is_read ? 'bg-blue-50/30' : ''}`}
+                          >
+                            <div className="mt-0.5 shrink-0">
+                              {isSuccess && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                              {isDanger && <XCircle className="w-4 h-4 text-red-600" />}
+                              {isWarning && <AlertTriangle className="w-4 h-4 text-amber-600" />}
+                              {!isSuccess && !isDanger && !isWarning && <Info className="w-4 h-4 text-blue-600" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <h5 className="text-xs font-bold text-slate-900 truncate">{n.title}</h5>
+                                <span className="text-[10px] text-slate-400">
+                                  {n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
                                 </span>
                               </div>
+                              <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{n.message}</p>
                             </div>
                           </div>
                         );
@@ -150,59 +178,45 @@ export const Header = ({ notifications = [], activeTab, setActiveTab }) => {
               )}
             </div>
 
-            {/* Profile Avatar Dropdown */}
+            {/* Profile Dropdown */}
             <div className="relative">
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center space-x-3 p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-left"
+                className="flex items-center space-x-2.5 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
               >
-                <div className="w-8 h-8 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
-                  {user?.profile?.full_name?.charAt(0) || user?.username?.charAt(0) || 'U'}
+                <div className="w-8 h-8 rounded-full bg-brand-600 text-white font-bold flex items-center justify-center text-xs shadow-xs">
+                  {user?.full_name ? user.full_name.charAt(0) : 'U'}
                 </div>
                 <div className="hidden lg:block text-left">
-                  <p className="text-xs font-bold text-slate-800 leading-tight">
-                    {user?.profile?.full_name || user?.username}
-                  </p>
-                  <p className="text-[11px] text-slate-500 leading-tight">
-                    {user?.role === 'student' ? user?.username : 'SVCE Staff'}
-                  </p>
+                  <span className="text-xs font-bold text-slate-900 block leading-none">
+                    {user?.full_name || 'SVCE User'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                    {user?.username}
+                  </span>
                 </div>
-                <ChevronDown className="w-4 h-4 text-slate-400" />
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
               </button>
 
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1 z-50 animate-in fade-in zoom-in-95 duration-150">
-                  <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
-                    <p className="text-xs font-semibold text-slate-800">{user?.profile?.full_name}</p>
-                    <p className="text-xs text-slate-500 font-medium">{user?.email}</p>
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in duration-150">
+                  <div className="px-4 py-2.5 border-b border-slate-100">
+                    <p className="text-xs font-bold text-slate-900 truncate">{user?.full_name}</p>
+                    <p className="text-[10px] text-slate-400 font-mono truncate">{user?.username}</p>
                   </div>
                   
-                  {setActiveTab && (
-                    <button
-                      onClick={() => {
-                        setActiveTab('settings');
-                        setShowUserMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                    >
-                      <User className="w-4 h-4 text-slate-400" />
-                      Account Settings
-                    </button>
-                  )}
-
                   <button
                     onClick={logout}
-                    className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 font-medium border-t border-slate-100"
+                    className="w-full px-4 py-2 text-left text-xs text-red-600 hover:bg-red-50 font-semibold transition-colors flex items-center gap-2"
                   >
-                    <LogOut className="w-4 h-4 text-red-500" />
-                    Sign Out ERP
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Exit ERP Portal</span>
                   </button>
                 </div>
               )}
             </div>
 
           </div>
-
         </div>
       </div>
     </header>

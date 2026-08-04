@@ -27,7 +27,10 @@ import {
   AlertCircle 
 } from 'lucide-react';
 
+import { useAlert } from '../context/AlertContext';
+
 export const StudentDashboard = () => {
+  const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
   const [borrowRecords, setBorrowRecords] = useState({ activeBooks: [], history: [] });
@@ -131,16 +134,18 @@ export const StudentDashboard = () => {
     }
   };
 
-  const handleCancelRequest = async (requestId) => {
-    if (!window.confirm('Are you sure you want to cancel this pending No-Dues application?')) return;
-    try {
-      const res = await api.post('/student/cancel-nodues', { requestId });
-      if (res.data.success) {
-        fetchDashboard();
+  const handleCancelRequest = (requestId) => {
+    showConfirm('Are you sure you want to cancel this pending No-Dues application?', async () => {
+      try {
+        const res = await api.post('/student/cancel-nodues', { requestId });
+        if (res.data.success) {
+          showAlert(res.data.message || 'No-Dues application cancelled successfully.');
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error cancelling request.', 'danger');
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error cancelling request.');
-    }
+    });
   };
 
   const handleCreateComplaint = async (payload) => {
@@ -229,17 +234,8 @@ export const StudentDashboard = () => {
                 </div>
               </div>
 
-              {/* 8 ERP Summary Metric Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
-                  <div className="flex items-center justify-between text-slate-500 mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider">Borrowed Books</span>
-                    <BookOpen className="w-4 h-4 text-brand-600" />
-                  </div>
-                  <p className="text-2xl font-extrabold text-slate-900">{metrics.borrowedCount}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">Active IT Dept Library Books</p>
-                </div>
-
+              {/* 3 ERP Summary Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
                   <div className="flex items-center justify-between text-slate-500 mb-2">
                     <span className="text-xs font-bold uppercase tracking-wider">Pending Returns</span>
@@ -420,56 +416,7 @@ export const StudentDashboard = () => {
             />
           )}
 
-          {/* TAB 4: BORROWED BOOKS & HISTORY */}
-          {activeTab === 'books' && (
-            <div className="space-y-6">
-              
-              {/* Active Borrowed Books */}
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-brand-600" />
-                  <span>Currently Borrowed Books ({borrowRecords.activeBooks.length})</span>
-                </h3>
 
-                <DataTable
-                  columns={[
-                    { header: 'Book ID', accessor: 'book_id', cell: (r) => <span className="font-mono font-bold text-brand-600">{r.book_id}</span> },
-                    { header: 'Book Title', accessor: 'title', cell: (r) => <span className="font-bold text-slate-800">{r.title}</span> },
-                    { header: 'Author(s)', accessor: 'author' },
-                    { header: 'Shelf Location', accessor: 'shelf_number', cell: (r) => <span className="font-mono text-slate-600">{r.shelf_number}</span> },
-                    { header: 'Issue Date', accessor: 'issue_date' },
-                    { header: 'Due Date', accessor: 'due_date', cell: (r) => <span className="font-semibold text-slate-800">{r.due_date}</span> },
-                    { header: 'Fine Status', accessor: 'fine_amount', cell: (r) => <span className={r.fine_amount > 0 ? 'font-bold text-red-600' : 'text-emerald-600'}>₹{r.fine_amount} ({r.fine_status})</span> },
-                    { header: 'Status', accessor: 'status', cell: (r) => <Badge>{r.status}</Badge> }
-                  ]}
-                  data={borrowRecords.activeBooks}
-                  searchPlaceholder="Search active borrowed books..."
-                />
-              </div>
-
-              {/* Borrow History */}
-              <div className="pt-4 border-t border-slate-200">
-                <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-slate-500" />
-                  <span>Previous Borrow History</span>
-                </h3>
-
-                <DataTable
-                  columns={[
-                    { header: 'Book ID', accessor: 'book_id', cell: (r) => <span className="font-mono text-slate-600">{r.book_id}</span> },
-                    { header: 'Book Title', accessor: 'title', cell: (r) => <span className="font-bold text-slate-800">{r.title}</span> },
-                    { header: 'Issue Date', accessor: 'issue_date' },
-                    { header: 'Return Date', accessor: 'return_date' },
-                    { header: 'Fine Paid', accessor: 'fine_amount', cell: (r) => <span>₹{r.fine_amount}</span> },
-                    { header: 'Status', accessor: 'status', cell: (r) => <Badge>{r.status}</Badge> }
-                  ]}
-                  data={borrowRecords.history}
-                  searchPlaceholder="Search history..."
-                />
-              </div>
-
-            </div>
-          )}
 
           {/* TAB 5: COMPLAINT DESK */}
           {activeTab === 'complaints' && (

@@ -23,7 +23,6 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'requests', label: 'No-Dues Tracker', icon: FileCheck2 },
     { id: 'certificate', label: 'Digital Certificate', icon: Award },
-    { id: 'books', label: 'Borrowed Books', icon: BookOpen },
     { id: 'complaints', label: 'Complaint Desk', icon: MessageSquareWarning },
     { id: 'announcements', label: 'Announcements', icon: Megaphone },
     { id: 'settings', label: 'Settings', icon: Settings },

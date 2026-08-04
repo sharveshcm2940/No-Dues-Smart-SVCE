@@ -32,7 +32,10 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+import { useAlert } from '../context/AlertContext';
+
 export const LibraryDashboard = () => {
+  const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
   const [books, setBooks] = useState([]);
@@ -99,21 +102,22 @@ export const LibraryDashboard = () => {
     }
   };
 
-  const handleResetMetrics = async () => {
-    if (!window.confirm('Reset metric statistics to auto-calculated database totals?')) return;
-    setSavingMetrics(true);
-    try {
-      const res = await api.post('/library/update-metrics', { reset_to_auto: true });
-      if (res.data.success) {
-        alert(res.data.message);
-        setShowMetricsModal(false);
-        fetchDashboard();
+  const handleResetMetrics = () => {
+    showConfirm('Reset metric statistics to auto-calculated database totals?', async () => {
+      setSavingMetrics(true);
+      try {
+        const res = await api.post('/library/update-metrics', { reset_to_auto: true });
+        if (res.data.success) {
+          showAlert(res.data.message);
+          setShowMetricsModal(false);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert('Failed to reset library metrics.', 'danger');
+      } finally {
+        setSavingMetrics(false);
       }
-    } catch (err) {
-      alert('Failed to reset library metrics.');
-    } finally {
-      setSavingMetrics(false);
-    }
+    });
   };
 
   // Announcement Form State
@@ -332,17 +336,18 @@ export const LibraryDashboard = () => {
     }
   };
 
-  const handleBulkApprove = async () => {
-    if (!window.confirm('Are you sure you want to bulk approve all eligible student No-Dues requests? (Students with 0 borrowed books and 0 unpaid fines will be cleared automatically)')) return;
-    try {
-      const res = await api.post('/library/bulk-approve');
-      if (res.data.success) {
-        alert(res.data.message);
-        fetchDashboard();
+  const handleBulkApprove = () => {
+    showConfirm('Are you sure you want to bulk approve all eligible student No-Dues requests? (Students with 0 borrowed books and 0 unpaid fines will be cleared automatically)', async () => {
+      try {
+        const res = await api.post('/library/bulk-approve');
+        if (res.data.success) {
+          showAlert(res.data.message);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error executing bulk library approval.', 'danger');
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error executing bulk library approval.');
-    }
+    });
   };
 
   if (loading || !dashboardData) {
