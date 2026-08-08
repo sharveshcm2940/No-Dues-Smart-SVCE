@@ -24,7 +24,10 @@ import {
   Building
 } from 'lucide-react';
 
+import { useAlert } from '../context/AlertContext';
+
 export const DPCDashboard = () => {
+  const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -77,7 +80,7 @@ export const DPCDashboard = () => {
   const handleDPCAction = async (action) => {
     if (!selectedRequest) return;
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
-      alert('Mandatory Remarks Required for Rejection.');
+      showAlert('Mandatory Remarks Required for Rejection.', 'danger');
       return;
     }
 
@@ -90,13 +93,13 @@ export const DPCDashboard = () => {
       });
 
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         setShowApprovalModal(false);
         setRemarks('');
         fetchDashboard();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Error processing DPC clearance.');
+      showAlert(err.response?.data?.message || 'Error processing DPC clearance.', 'danger');
     } finally {
       setSubmitting(false);
     }
@@ -142,17 +145,18 @@ export const DPCDashboard = () => {
     }
   };
 
-  const handleBulkApprove = async () => {
-    if (!window.confirm('Are you sure you want to bulk approve all pending DPC Stage 5 career pathway requests?')) return;
-    try {
-      const res = await api.post('/dpc/bulk-approve');
-      if (res.data.success) {
-        alert(res.data.message);
-        fetchDashboard();
+  const handleBulkApprove = () => {
+    showConfirm('Are you sure you want to bulk approve all pending DPC Stage 5 career pathway requests?', async () => {
+      try {
+        const res = await api.post('/dpc/bulk-approve');
+        if (res.data.success) {
+          showAlert(res.data.message);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error executing bulk DPC approval.', 'danger');
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error executing bulk DPC approval.');
-    }
+    });
   };
 
   return (
@@ -241,13 +245,13 @@ export const DPCDashboard = () => {
 
               </div>
 
-              {/* STAGE 5 PENDING CAREER VERIFICATION DESK */}
+              {/* STAGE 1 PENDING CAREER VERIFICATION DESK */}
               <div className="space-y-3 bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <Clock className="w-4 h-4 text-amber-600" />
-                      <span>Pending Stage 5 Career Verification Requests ({pendingDPCRequests.length})</span>
+                      <span>Pending Stage 1 Career Verification Requests ({pendingDPCRequests.length})</span>
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
                       Review 4th Year student career credentials (offer letters, scorecards, admit cards, business plans)
@@ -704,6 +708,10 @@ export const DPCDashboard = () => {
                 placeholder="Enter career audit remarks (e.g. Offer letter verified with HR, College admit confirmed)..."
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-medium text-slate-800"
               />
+              <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                <span>If Rejected, this message will be sent as a notification to <strong>the Student and their Faculty Advisor</strong> with the reason.</span>
+              </p>
             </div>
 
             {/* Actions */}

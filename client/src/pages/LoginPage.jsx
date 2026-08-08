@@ -53,7 +53,9 @@ export const LoginPage = () => {
   const quickPresets = [
     { title: 'Dr V Vidhya', subtitle: 'Head of Department (HOD)', id: 'EMP-HOD-IT-01', role: 'HOD', icon: Crown, color: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100' },
     { title: 'Dr. R. Placement Coordinator', subtitle: 'Placement Coordinator (DPC)', id: 'EMP-DPC-IT-01', role: 'DPC', icon: Building2, color: 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100' },
-    { title: 'Sivakumar E', subtitle: 'Dept Library In-Charge', id: 'EMP-LIB-IT-01', role: 'Library', icon: BookOpen, color: 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100' },
+    { title: 'Gurusamy M', subtitle: 'Finance Clearance Officer', id: 'EMP-FIN-IT-01', role: 'Finance', icon: ShieldCheck, color: 'bg-pink-50 text-pink-800 border-pink-200 hover:bg-pink-100' },
+    { title: 'Mohan Kumar S', subtitle: 'Central Library Officer', id: 'EMP-MLIB-IT-01', role: 'Central Lib', icon: BookOpen, color: 'bg-teal-50 text-teal-800 border-teal-200 hover:bg-teal-100' },
+    { title: 'Sivakumar E', subtitle: 'Dept Library In-Charge', id: 'EMP-LIB-IT-01', role: 'Dept Lib', icon: BookOpen, color: 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100' },
     { title: '101-Aadhityan K', subtitle: '4th Yr Placement (4-IT-A)', id: 'IT2024001', role: 'Student', icon: User, color: 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100' },
     { title: '102-Bhavani S', subtitle: '4th Yr Higher Studies (4-IT-A)', id: 'IT2024002', role: 'Student', icon: User, color: 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100' },
     { title: 'S.Kavishree', subtitle: 'FA (3rd Yr IT-A Incharge)', id: 'EMP-FA-IT-04', role: 'FA', icon: Award, color: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100' },

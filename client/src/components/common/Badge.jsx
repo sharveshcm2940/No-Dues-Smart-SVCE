@@ -1,6 +1,8 @@
 import React from 'react';
 
-export const Badge = ({ children, variant = 'info', className = '' }) => {
+export const Badge = ({ children, text, color, variant = 'info', className = '' }) => {
+  const content = children ?? text;
+  const resolvedVariant = color === 'amber' ? 'warning' : color || variant;
   const variants = {
     primary: 'bg-brand-50 text-brand-700 border-brand-200',
     success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -12,7 +14,7 @@ export const Badge = ({ children, variant = 'info', className = '' }) => {
   };
 
   const getVariantByText = (text) => {
-    if (!text || typeof text !== 'string') return variants[variant] || variants.info;
+    if (!text || typeof text !== 'string') return variants[resolvedVariant] || variants.info;
     const lower = text.toLowerCase();
     if (lower.includes('approved') || lower.includes('eligible') || lower.includes('returned') || lower.includes('paid') || lower.includes('resolved') || lower.includes('completed')) {
       return variants.success;
@@ -26,15 +28,18 @@ export const Badge = ({ children, variant = 'info', className = '' }) => {
     if (lower.includes('hold')) {
       return variants.hold;
     }
-    return variants[variant] || variants.info;
+    if (lower.includes('locked') || lower.includes('not submitted') || lower.includes('n/a')) {
+      return variants.secondary;
+    }
+    return variants[resolvedVariant] || variants.info;
   };
 
-  const badgeStyle = getVariantByText(children);
+  const badgeStyle = getVariantByText(content);
 
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeStyle} ${className}`}>
       <span className="w-1.5 h-1.5 rounded-full bg-current opacity-75"></span>
-      {children}
+      {content}
     </span>
   );
 };

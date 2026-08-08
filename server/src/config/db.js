@@ -8,13 +8,14 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.error('Error connecting to SQLite database:', err.message);
   } else {
     console.log('Connected to SQLite local database for No-Dues system.');
+    db.run('PRAGMA foreign_keys = ON;');
   }
 });
 
 // Helper wrapper for async query execution (mimicking mysql pool.query / sqlite db.all)
 const query = (sql, params = []) => {
   return new Promise((resolve, reject) => {
-    const isSelect = sql.trim().toLowerCase().startsWith('select');
+    const isSelect = /^\s*(SELECT|WITH|PRAGMA|EXPLAIN)/i.test(sql.trim());
     if (isSelect) {
       db.all(sql, params, (err, rows) => {
         if (err) reject(err);

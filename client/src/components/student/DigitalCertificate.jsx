@@ -2,8 +2,10 @@ import React, { useRef, useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Download, Printer, Share2, Award, ShieldCheck, CheckCircle2, History, ChevronRight } from 'lucide-react';
 import SVCELogo from '../common/SVCELogo';
+import { useAlert } from '../../context/AlertContext';
 
 export const DigitalCertificate = ({ activeRequest, profile, approvedCertificates = [] }) => {
+  const { showAlert } = useAlert();
   const certificateRef = useRef(null);
 
   // Combine and deduplicate approved requests
@@ -70,7 +72,11 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
         url: window.location.href,
       }).catch(() => {});
     } else {
-      alert(`Certificate verification payload copied!\nCertificate No: ${certNumber}`);
+      navigator.clipboard.writeText(`Certificate No: ${certNumber}`).then(() => {
+        showAlert(`Certificate No. ${certNumber} copied to clipboard!`, 'success');
+      }).catch(() => {
+        showAlert(`Certificate No: ${certNumber}`, 'info');
+      });
     }
   };
 

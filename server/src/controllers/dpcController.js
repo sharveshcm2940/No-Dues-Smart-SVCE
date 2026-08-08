@@ -1,5 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
+const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
 
 // Get DPC Dashboard Statistics & Submissions
 exports.getDPCDashboard = async (req, res) => {
@@ -15,7 +16,15 @@ exports.getDPCDashboard = async (req, res) => {
        FROM nodues_requests nr
        JOIN students s ON nr.register_number = s.register_number
        WHERE nr.career_option IS NOT NULL
-       ORDER BY nr.id DESC`
+       ORDER BY 
+         CASE s.year 
+           WHEN 'IV Year' THEN 4 
+           WHEN 'III Year' THEN 3 
+           WHEN 'II Year' THEN 2 
+           WHEN 'I Year' THEN 1 
+           ELSE 0 
+         END DESC, 
+         s.full_name ASC`
     );
 
     // Pending Stage 5 DPC Approvals
@@ -29,7 +38,15 @@ exports.getDPCDashboard = async (req, res) => {
       JOIN nodues_stages ns ON nr.id = ns.request_id AND ns.department_name = 'DPC'
       JOIN students s ON nr.register_number = s.register_number
       WHERE ns.status = 'Pending'
-      ORDER BY nr.id DESC`
+      ORDER BY 
+        CASE s.year 
+          WHEN 'IV Year' THEN 4 
+          WHEN 'III Year' THEN 3 
+          WHEN 'II Year' THEN 2 
+          WHEN 'I Year' THEN 1 
+          ELSE 0 
+        END DESC, 
+        s.full_name ASC`
     );
 
     // Approved DPC Requests count
@@ -87,13 +104,26 @@ exports.processDPCAction = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No-Dues Request record not found.' });
     }
 
+    if (action === 'Approve') {
+      const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
+      const mainLibStage = stages.find(s => s.department_name === 'Central Library');
+      const deptLibStage = stages.find(s => s.department_name === 'Department Library');
+
+      if (!mainLibStage || mainLibStage.status !== 'Approved' || !deptLibStage || deptLibStage.status !== 'Approved') {
+        return res.status(400).json({
+          success: false,
+          message: 'DPC approval is locked until BOTH Central Library and Department Library clearances are approved.'
+        });
+      }
+    }
+
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
       return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });
     }
 
-    const newStatus = action === 'Approve' ? 'Approved' : 'Rejected';
+    const newStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : 'Hold');
 
-    // Update DPC Stage (Stage 5)
+    // Update DPC Stage
     await query(
       `UPDATE nodues_stages 
        SET status = ?, approved_by = ?, remarks = ?, updated_at = datetime('now')
@@ -101,24 +131,26 @@ exports.processDPCAction = async (req, res) => {
       [newStatus, approverName, remarks || `Career Pathway (${request.career_option || 'General'}) verified and cleared by DPC.`, requestId]
     );
 
+    // Audit Log Entry
+    await logAuditEntry({
+      requestId,
+      departmentName: 'DPC',
+      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
+      actorName: approverName,
+      actorRole: 'dpc',
+      statusAfter: newStatus,
+      remarks: remarks || `Career Pathway (${request.career_option || 'General'}) verified and cleared by DPC.`
+    });
+
     if (action === 'Approve') {
-      // Advance to HOD (Stage 6)
-      await query(
-        `UPDATE nodues_stages SET status = 'Pending', remarks = 'Awaiting Head of Department (HOD) final sign-off.' 
-         WHERE request_id = ? AND department_name = 'HOD'`,
-        [requestId]
-      );
-
-      await query(
-        `UPDATE nodues_requests SET progress_percentage = 83, current_stage = 'HOD Final Approval' WHERE id = ?`,
-        [requestId]
-      );
-
       await query(
         `INSERT INTO notifications (target_user, title, message, type)
          VALUES (?, ?, ?, ?)`,
         [request.register_number, 'DPC Placement Clearance Approved', `Department Placement Coordinator ${approverName} verified your career submission (${request.career_option}) and granted Stage 5 clearance.`, 'success']
       );
+
+      // Advance stage to HOD
+      await updateRequestProgress(requestId);
     } else if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
@@ -171,29 +203,16 @@ exports.bulkApproveDPC = async (req, res) => {
         [approverName, item.request_id]
       );
 
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Pending', remarks = 'Awaiting HOD final approval.' 
-         WHERE request_id = ? AND department_name = 'HOD'`,
-        [item.request_id]
-      );
-
-      await query(
-        `UPDATE nodues_requests 
-         SET progress_percentage = 90, current_stage = 'HOD' 
-         WHERE id = ?`,
-        [item.request_id]
-      );
-
+      await updateRequestProgress(item.request_id);
       count++;
     }
 
     return res.json({
       success: true,
-      message: `Successfully bulk approved ${count} DPC placement clearance request(s).`
+      message: `Successfully granted DPC career verification approval for ${count} request(s).`
     });
   } catch (error) {
     console.error('Bulk Approve DPC Error:', error);
-    return res.status(500).json({ success: false, message: 'Error performing bulk DPC approval.' });
+    return res.status(500).json({ success: false, message: 'Error performing bulk DPC clearance approval.' });
   }
 };

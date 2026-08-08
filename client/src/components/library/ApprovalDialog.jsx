@@ -3,8 +3,10 @@ import Modal from '../common/Modal';
 import { ShieldCheck, AlertOctagon, CheckCircle2, XCircle, Clock, BookOpen, IndianRupee, Plus, DollarSign, Check } from 'lucide-react';
 import Badge from '../common/Badge';
 import api from '../../services/api';
+import { useAlert } from '../../context/AlertContext';
 
 export const ApprovalDialog = ({ isOpen, onClose, requestItem, onProcessAction, onRefresh }) => {
+  const { showAlert } = useAlert();
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -50,7 +52,7 @@ export const ApprovalDialog = ({ isOpen, onClose, requestItem, onProcessAction, 
   const handleAddFineSubmit = async (e) => {
     e.preventDefault();
     if (!fineAmountInput || parseFloat(fineAmountInput) <= 0) {
-      alert('Please enter a valid fine amount in Rupees (₹).');
+      showAlert('Please enter a valid fine amount in Rupees (₹).', 'danger');
       return;
     }
 
@@ -246,9 +248,13 @@ export const ApprovalDialog = ({ isOpen, onClose, requestItem, onProcessAction, 
             rows={3}
             value={remarks}
             onChange={(e) => setRemarks(e.target.value)}
-            placeholder="Enter verification notes or instructions for the student..."
+            placeholder="Enter verification notes or reason for hold/rejection (will be sent to student as notification)..."
             className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-brand-500"
           />
+          <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+            <AlertOctagon className="w-3 h-3 text-amber-500 flex-shrink-0" />
+            <span>If Rejected or Put On Hold, this message will be sent as a real-time notification to <strong>the Student and their Faculty Advisor</strong>.</span>
+          </p>
         </div>
 
         {/* Action Buttons */}

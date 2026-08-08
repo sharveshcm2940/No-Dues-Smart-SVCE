@@ -32,7 +32,10 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+import { useAlert } from '../context/AlertContext';
+
 export const LibraryDashboard = () => {
+  const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
   const [books, setBooks] = useState([]);
@@ -88,32 +91,33 @@ export const LibraryDashboard = () => {
         pending_returns: editPendingReturns
       });
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         setShowMetricsModal(false);
         fetchDashboard();
       }
     } catch (err) {
-      alert('Failed to update library metrics.');
+      showAlert('Failed to update library metrics.', 'danger');
     } finally {
       setSavingMetrics(false);
     }
   };
 
-  const handleResetMetrics = async () => {
-    if (!window.confirm('Reset metric statistics to auto-calculated database totals?')) return;
-    setSavingMetrics(true);
-    try {
-      const res = await api.post('/library/update-metrics', { reset_to_auto: true });
-      if (res.data.success) {
-        alert(res.data.message);
-        setShowMetricsModal(false);
-        fetchDashboard();
+  const handleResetMetrics = () => {
+    showConfirm('Reset metric statistics to auto-calculated database totals?', async () => {
+      setSavingMetrics(true);
+      try {
+        const res = await api.post('/library/update-metrics', { reset_to_auto: true });
+        if (res.data.success) {
+          showAlert(res.data.message);
+          setShowMetricsModal(false);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert('Failed to reset library metrics.', 'danger');
+      } finally {
+        setSavingMetrics(false);
       }
-    } catch (err) {
-      alert('Failed to reset library metrics.');
-    } finally {
-      setSavingMetrics(false);
-    }
+    });
   };
 
   // Announcement Form State
@@ -211,13 +215,13 @@ export const LibraryDashboard = () => {
     try {
       const res = await api.post('/library/process-nodues', { requestId, action, remarks });
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         fetchDashboard();
         fetchStudents();
       }
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to process request.';
-      alert(msg);
+      showAlert(msg, 'danger');
       throw new Error(msg);
     }
   };
@@ -231,28 +235,29 @@ export const LibraryDashboard = () => {
         res = await api.post('/library/books', formData);
       }
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         fetchBooks();
         fetchDashboard();
       }
     } catch (err) {
       const msg = err.response?.data?.message || 'Error saving book.';
-      alert(msg);
+      showAlert(msg, 'danger');
       throw new Error(msg);
     }
   };
 
   const handleDeleteBook = async (id, title) => {
-    if (!window.confirm(`Are you sure you want to remove "${title}" from catalog?`)) return;
-    try {
-      const res = await api.delete(`/library/books/${id}`);
-      if (res.data.success) {
-        fetchBooks();
-        fetchDashboard();
+    showConfirm(`Are you sure you want to remove "${title}" from catalog?`, async () => {
+      try {
+        const res = await api.delete(`/library/books/${id}`);
+        if (res.data.success) {
+          fetchBooks();
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error deleting book.', 'danger');
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error deleting book.');
-    }
+    });
   };
 
   const handleViewStudentDrawer = async (regNo) => {
@@ -264,7 +269,7 @@ export const LibraryDashboard = () => {
         setShowStudentDrawer(true);
       }
     } catch (err) {
-      alert('Error fetching student details.');
+      showAlert('Error fetching student details.', 'danger');
     }
   };
 
@@ -279,10 +284,10 @@ export const LibraryDashboard = () => {
       if (res.data.success) {
         fetchComplaints();
         setShowReplyModal(false);
-        alert('Complaint ticket status updated!');
+        showAlert('Complaint ticket status updated!', 'success');
       }
     } catch (err) {
-      alert('Error updating complaint ticket.');
+      showAlert('Error updating complaint ticket.', 'danger');
     }
   };
 
@@ -300,21 +305,22 @@ export const LibraryDashboard = () => {
         fetchAnnouncements();
         setAncTitle('');
         setAncDesc('');
-        alert('Announcement published successfully!');
+        showAlert('Announcement published successfully!', 'success');
       }
     } catch (err) {
-      alert('Error publishing announcement.');
+      showAlert('Error publishing announcement.', 'danger');
     }
   };
 
   const handleDeleteAnnouncement = async (id) => {
-    if (!window.confirm('Delete this announcement?')) return;
-    try {
-      const res = await api.delete(`/library/announcements/${id}`);
-      if (res.data.success) fetchAnnouncements();
-    } catch (err) {
-      alert('Error deleting announcement.');
-    }
+    showConfirm('Delete this announcement?', async () => {
+      try {
+        const res = await api.delete(`/library/announcements/${id}`);
+        if (res.data.success) fetchAnnouncements();
+      } catch (err) {
+        showAlert('Error deleting announcement.', 'danger');
+      }
+    });
   };
 
   const handlePasswordUpdate = async (e) => {
@@ -332,17 +338,18 @@ export const LibraryDashboard = () => {
     }
   };
 
-  const handleBulkApprove = async () => {
-    if (!window.confirm('Are you sure you want to bulk approve all eligible student No-Dues requests? (Students with 0 borrowed books and 0 unpaid fines will be cleared automatically)')) return;
-    try {
-      const res = await api.post('/library/bulk-approve');
-      if (res.data.success) {
-        alert(res.data.message);
-        fetchDashboard();
+  const handleBulkApprove = () => {
+    showConfirm('Are you sure you want to bulk approve all eligible student No-Dues requests? (Students with 0 borrowed books and 0 unpaid fines will be cleared automatically)', async () => {
+      try {
+        const res = await api.post('/library/bulk-approve');
+        if (res.data.success) {
+          showAlert(res.data.message);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error executing bulk library approval.', 'danger');
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error executing bulk library approval.');
-    }
+    });
   };
 
   if (loading || !dashboardData) {

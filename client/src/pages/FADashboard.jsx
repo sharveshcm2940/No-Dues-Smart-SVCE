@@ -29,7 +29,10 @@ import {
   ExternalLink
 } from 'lucide-react';
 
+import { useAlert } from '../context/AlertContext';
+
 export const FADashboard = () => {
+  const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -86,7 +89,7 @@ export const FADashboard = () => {
   const handleFAAction = async (action) => {
     if (!selectedRequest) return;
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
-      alert('Mandatory Remarks Required for Rejection.');
+      showAlert('Mandatory Remarks Required for Rejection.', 'danger');
       return;
     }
 
@@ -99,13 +102,13 @@ export const FADashboard = () => {
       });
 
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         setShowApprovalModal(false);
         setRemarks('');
         fetchDashboard();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Error processing FA action.');
+      showAlert(err.response?.data?.message || 'Error processing FA action.', 'danger');
     } finally {
       setSubmitting(false);
     }
@@ -134,17 +137,18 @@ export const FADashboard = () => {
     );
   }
 
-  const handleBulkApprove = async () => {
-    if (!window.confirm('Are you sure you want to bulk approve all pending No-Dues requests for your assigned advisees?')) return;
-    try {
-      const res = await api.post('/fa/bulk-approve');
-      if (res.data.success) {
-        alert(res.data.message);
-        fetchDashboard();
+  const handleBulkApprove = () => {
+    showConfirm('Are you sure you want to bulk approve all pending No-Dues requests for your assigned advisees?', async () => {
+      try {
+        const res = await api.post('/fa/bulk-approve');
+        if (res.data.success) {
+          showAlert(res.data.message);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error executing bulk FA approval.', 'danger');
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error executing bulk FA approval.');
-    }
+    });
   };
 
   const { advisor, stats, advisees, pendingFARequests } = dashboardData;
@@ -643,9 +647,13 @@ export const FADashboard = () => {
                 rows={3}
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
-                placeholder="Enter advisor verification remarks..."
+                placeholder="Enter advisor verification remarks (optional for approval, mandatory for rejection)..."
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-medium text-slate-800"
               />
+              <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                <span>If Rejected or Put On Hold, this message will be sent as a notification to <strong>the Student</strong> explaining the reason.</span>
+              </p>
             </div>
 
             <div className="pt-4 border-t border-slate-100 flex justify-end gap-2">
@@ -655,6 +663,15 @@ export const FADashboard = () => {
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg"
               >
                 Close
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleFAAction('Hold')}
+                disabled={submitting}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-xs"
+              >
+                Put On Hold
               </button>
 
               <button

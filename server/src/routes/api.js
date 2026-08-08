@@ -7,6 +7,8 @@ const libraryController = require('../controllers/libraryController');
 const faController = require('../controllers/faController');
 const hodController = require('../controllers/hodController');
 const dpcController = require('../controllers/dpcController');
+const financeController = require('../controllers/financeController');
+const mainLibraryController = require('../controllers/mainLibraryController');
 
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
@@ -14,6 +16,7 @@ const { authenticateToken, authorizeRole } = require('../middleware/auth');
 router.post('/auth/login', authController.login);
 router.get('/auth/me', authenticateToken, authController.getCurrentUser);
 router.post('/auth/password', authenticateToken, authController.updatePassword);
+router.post('/auth/handover', authenticateToken, authController.handoverPosition);
 
 // Student Portal Routes (Role: student)
 router.get(
@@ -35,6 +38,19 @@ router.post(
   authenticateToken,
   authorizeRole(['student']),
   studentController.cancelNoDuesRequest
+);
+
+router.post(
+  '/student/resubmit-nodues',
+  authenticateToken,
+  authorizeRole(['student']),
+  studentController.resubmitNoDuesRequest
+);
+
+router.get(
+  '/student/audit-logs/:requestId',
+  authenticateToken,
+  studentController.getAuditLogs
 );
 
 router.get(
@@ -224,6 +240,27 @@ router.post(
   hodController.bulkApproveHOD
 );
 
+router.post(
+  '/hod/bulk-register-students',
+  authenticateToken,
+  authorizeRole(['hod']),
+  hodController.bulkRegisterStudents
+);
+
+router.delete(
+  '/hod/students/year/:year',
+  authenticateToken,
+  authorizeRole(['hod']),
+  hodController.deleteStudentsByYear
+);
+
+router.delete(
+  '/hod/students/all',
+  authenticateToken,
+  authorizeRole(['hod']),
+  hodController.clearAllStudents
+);
+
 // Department Placement Coordinator Routes (Role: dpc)
 router.get(
   '/dpc/dashboard',
@@ -244,6 +281,50 @@ router.post(
   authenticateToken,
   authorizeRole(['dpc']),
   dpcController.bulkApproveDPC
+);
+
+// Finance Officer Routes (Role: finance)
+router.get(
+  '/finance/dashboard',
+  authenticateToken,
+  authorizeRole(['finance']),
+  financeController.getFinanceDashboard
+);
+
+router.post(
+  '/finance/process-nodues',
+  authenticateToken,
+  authorizeRole(['finance']),
+  financeController.processFinanceAction
+);
+
+router.post(
+  '/finance/bulk-approve',
+  authenticateToken,
+  authorizeRole(['finance']),
+  financeController.bulkApproveFinance
+);
+
+// Main Library / Central Library Routes (Role: main_library_staff)
+router.get(
+  '/main-library/dashboard',
+  authenticateToken,
+  authorizeRole(['main_library_staff']),
+  mainLibraryController.getMainLibraryDashboard
+);
+
+router.post(
+  '/main-library/process-nodues',
+  authenticateToken,
+  authorizeRole(['main_library_staff']),
+  mainLibraryController.processMainLibraryAction
+);
+
+router.post(
+  '/main-library/bulk-approve',
+  authenticateToken,
+  authorizeRole(['main_library_staff']),
+  mainLibraryController.bulkApproveMainLibrary
 );
 
 module.exports = router;

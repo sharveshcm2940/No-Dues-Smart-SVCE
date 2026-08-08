@@ -1,11 +1,14 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { AlertProvider } from './context/AlertContext';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
 import LibraryDashboard from './pages/LibraryDashboard';
 import FADashboard from './pages/FADashboard';
 import HODDashboard from './pages/HODDashboard';
 import DPCDashboard from './pages/DPCDashboard';
+import FinanceDashboard from './pages/FinanceDashboard';
+import MainLibraryDashboard from './pages/MainLibraryDashboard';
 
 const MainAppContent = () => {
   const { user, isAuthenticated } = useAuth();
@@ -34,14 +37,24 @@ const MainAppContent = () => {
     return <DPCDashboard />;
   }
 
+  if (user.role === 'finance') {
+    return <FinanceDashboard />;
+  }
+
+  if (user.role === 'main_library_staff') {
+    return <MainLibraryDashboard />;
+  }
+
   return <LoginPage />;
 };
 
 export function App() {
   return (
-    <AuthProvider>
-      <MainAppContent />
-    </AuthProvider>
+    <AlertProvider>
+      <AuthProvider>
+        <MainAppContent />
+      </AuthProvider>
+    </AlertProvider>
   );
 }
 

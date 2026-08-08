@@ -1,5 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
+const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
 
 // Get Faculty Advisor (FA) Dashboard Statistics & Advisees
 exports.getFADashboard = async (req, res) => {
@@ -18,7 +19,15 @@ exports.getFADashboard = async (req, res) => {
         (SELECT current_stage FROM nodues_requests nr WHERE nr.register_number = s.register_number ORDER BY id DESC LIMIT 1) as current_stage
        FROM students s
        WHERE s.advisor_emp_id = ? OR s.advisor_name = ?
-       ORDER BY s.id DESC`,
+       ORDER BY 
+         CASE s.year 
+           WHEN 'IV Year' THEN 4 
+           WHEN 'III Year' THEN 3 
+           WHEN 'II Year' THEN 2 
+           WHEN 'I Year' THEN 1 
+           ELSE 0 
+         END DESC, 
+         s.full_name ASC`,
       [empId, advisor ? advisor.full_name : '']
     );
 
@@ -39,7 +48,15 @@ exports.getFADashboard = async (req, res) => {
       FROM nodues_requests nr
       JOIN nodues_stages ns ON nr.id = ns.request_id AND ns.department_name = 'Faculty Advisor'
       WHERE ns.status = 'Pending' AND (nr.register_number IN (SELECT register_number FROM students WHERE advisor_emp_id = ? OR advisor_name = ?))
-      ORDER BY nr.id DESC`,
+      ORDER BY 
+        CASE nr.year 
+          WHEN 'IV Year' THEN 4 
+          WHEN 'III Year' THEN 3 
+          WHEN 'II Year' THEN 2 
+          WHEN 'I Year' THEN 1 
+          ELSE 0 
+        END DESC, 
+        nr.student_name ASC`,
       [empId, advisor ? advisor.full_name : '']
     );
 
@@ -88,8 +105,16 @@ exports.processFAAction = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No-Dues Request record not found.' });
     }
 
-    if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
-      return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });
+    if (action === 'Approve') {
+      const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
+      const financeStage = stages.find(s => s.department_name === 'Finance');
+
+      if (!financeStage || financeStage.status !== 'Approved') {
+        return res.status(400).json({
+          success: false,
+          message: 'Faculty Advisor clearance is locked until Finance section clearance is approved.'
+        });
+      }
     }
 
     const newStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : 'Hold');
@@ -102,31 +127,26 @@ exports.processFAAction = async (req, res) => {
       [newStatus, approverName, remarks || 'Faculty Advisor approval granted.', requestId]
     );
 
+    // Audit Log Entry
+    await logAuditEntry({
+      requestId,
+      departmentName: 'Faculty Advisor',
+      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
+      actorName: approverName,
+      actorRole: 'faculty_advisor',
+      statusAfter: newStatus,
+      remarks: remarks || (action === 'Approve' ? 'Faculty Advisor clearance granted.' : 'Put on hold by Faculty Advisor.')
+    });
+
     if (action === 'Approve') {
-      // Advance to DPC (Stage 5)
-      await query(
-        `UPDATE nodues_stages SET status = 'Approved', approved_by = 'DPC Automated Review', remarks = 'Department Performance Committee cleared.' 
-         WHERE request_id = ? AND department_name = 'DPC'`,
-        [requestId]
-      );
-
-      // Advance to HOD (Stage 6)
-      await query(
-        `UPDATE nodues_stages SET status = 'Pending', remarks = 'Awaiting Head of Department (HOD) final sign-off.' 
-         WHERE request_id = ? AND department_name = 'HOD'`,
-        [requestId]
-      );
-
-      await query(
-        `UPDATE nodues_requests SET progress_percentage = 83, current_stage = 'HOD Final Approval' WHERE id = ?`,
-        [requestId]
-      );
-
       await query(
         `INSERT INTO notifications (target_user, title, message, type)
          VALUES (?, ?, ?, ?)`,
         [request.register_number, 'Faculty Advisor Approved', `Your Faculty Advisor ${approverName} approved your No-Dues request ${request.request_number}.`, 'success']
       );
+
+      // Advance stage to DPC or HOD
+      await updateRequestProgress(requestId);
     } else if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
@@ -163,13 +183,15 @@ exports.bulkApproveAdvisees = async (req, res) => {
     const fa = await getOne('SELECT full_name FROM faculty_advisors WHERE employee_id = ?', [empId]);
     const approverName = fa ? `${fa.full_name} (Faculty Advisor)` : 'Faculty Advisor Sign-off';
 
+    const faName = fa ? fa.full_name : '';
     const pendingStages = await query(`
       SELECT ns.request_id, nr.register_number, nr.request_number, nr.year
       FROM nodues_stages ns
       JOIN nodues_requests nr ON ns.request_id = nr.id
       JOIN students s ON nr.register_number = s.register_number
-      WHERE ns.department_name = 'Faculty Advisor' AND ns.status = 'Pending' AND s.advisor_id = ?
-    `, [empId]);
+      WHERE ns.department_name = 'Faculty Advisor' AND ns.status = 'Pending'
+        AND (s.advisor_emp_id = ? OR s.advisor_name = ?)
+    `, [empId, faName]);
 
     let count = 0;
     for (const item of pendingStages) {
@@ -180,32 +202,16 @@ exports.bulkApproveAdvisees = async (req, res) => {
         [approverName, item.request_id]
       );
 
-      const is4thYear = item.year && (item.year.includes('IV') || item.year.includes('4th') || item.year.includes('Fourth') || item.year === 'IV Year');
-      const nextStage = is4thYear ? 'DPC' : 'HOD';
-
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Pending', remarks = ? 
-         WHERE request_id = ? AND department_name = ?`,
-        [is4thYear ? 'Awaiting DPC placement officer verification.' : 'Awaiting HOD final approval.', item.request_id, nextStage]
-      );
-
-      await query(
-        `UPDATE nodues_requests 
-         SET progress_percentage = 83, current_stage = ? 
-         WHERE id = ?`,
-        [nextStage, item.request_id]
-      );
-
+      await updateRequestProgress(item.request_id);
       count++;
     }
 
     return res.json({
       success: true,
-      message: `Successfully bulk approved ${count} advisee No-Dues clearance request(s).`
+      message: `Successfully granted Faculty Advisor approval for ${count} advisee request(s).`
     });
   } catch (error) {
     console.error('Bulk Approve FA Error:', error);
-    return res.status(500).json({ success: false, message: 'Error performing bulk FA approval.' });
+    return res.status(500).json({ success: false, message: 'Error executing bulk Faculty Advisor approval.' });
   }
 };

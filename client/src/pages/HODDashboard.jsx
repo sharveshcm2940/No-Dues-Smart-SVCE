@@ -19,10 +19,17 @@ import {
   Megaphone, 
   KeyRound, 
   Plus,
-  Trash2
+  Trash2,
+  Upload,
+  UserPlus,
+  FileSpreadsheet,
+  ShieldAlert
 } from 'lucide-react';
 
+import { useAlert } from '../context/AlertContext';
+
 export const HODDashboard = () => {
+  const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
   const [announcements, setAnnouncements] = useState([]);
@@ -43,6 +50,11 @@ export const HODDashboard = () => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [settingsMsg, setSettingsMsg] = useState({ type: '', text: '' });
+
+  // Student Roster Admin States
+  const [selectedWipeYear, setSelectedWipeYear] = useState('IV Year');
+  const [csvFile, setCsvFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const fetchDashboard = async () => {
     try {
@@ -89,7 +101,7 @@ export const HODDashboard = () => {
   const handleHODAction = async (action) => {
     if (!selectedRequest) return;
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
-      alert('Mandatory Remarks Required for Rejection.');
+      showAlert('Mandatory Remarks Required for Rejection.', 'danger');
       return;
     }
 
@@ -102,13 +114,13 @@ export const HODDashboard = () => {
       });
 
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         setShowApprovalModal(false);
         setRemarks('');
         fetchDashboard();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Error processing HOD sign-off.');
+      showAlert(err.response?.data?.message || 'Error processing HOD sign-off.', 'danger');
     } finally {
       setSubmitting(false);
     }
@@ -128,21 +140,22 @@ export const HODDashboard = () => {
         fetchAnnouncements();
         setAncTitle('');
         setAncDesc('');
-        alert('HOD Official Announcement published!');
+        showAlert('HOD Official Announcement published!', 'success');
       }
     } catch (err) {
-      alert('Error publishing announcement.');
+      showAlert('Error publishing announcement.', 'danger');
     }
   };
 
   const handleDeleteAnnouncement = async (id) => {
-    if (!window.confirm('Delete this announcement?')) return;
-    try {
-      const res = await api.delete(`/library/announcements/${id}`);
-      if (res.data.success) fetchAnnouncements();
-    } catch (err) {
-      alert('Error deleting announcement.');
-    }
+    showConfirm('Delete this announcement?', async () => {
+      try {
+        const res = await api.delete(`/library/announcements/${id}`);
+        if (res.data.success) fetchAnnouncements();
+      } catch (err) {
+        showAlert('Error deleting announcement.', 'danger');
+      }
+    });
   };
 
   const handlePasswordUpdate = async (e) => {
@@ -161,16 +174,100 @@ export const HODDashboard = () => {
   };
 
   const handleBulkApprove = async () => {
-    if (!window.confirm('Are you sure you want to grant final Head of Department (HOD) approval and issue Digital Certificates for ALL pending Stage 6 requests?')) return;
-    try {
-      const res = await api.post('/hod/bulk-approve');
-      if (res.data.success) {
-        alert(res.data.message);
-        fetchDashboard();
+    showConfirm('Are you sure you want to grant final HOD approval and issue Digital Certificates for ALL pending Stage 6 requests?', async () => {
+      try {
+        const res = await api.post('/hod/bulk-approve');
+        if (res.data.success) {
+          showAlert(res.data.message, 'success');
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error executing bulk HOD final sign-off.', 'danger');
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error executing bulk HOD final sign-off.');
+    });
+  };
+
+  const handleCSVUpload = async (e) => {
+    e.preventDefault();
+    if (!csvFile) {
+      showAlert('Please select a CSV file to upload.', 'danger');
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        const rows = text.split('\n').map(row => row.trim()).filter(row => row.length > 0);
+        if (rows.length <= 1) {
+          showAlert('CSV file is empty or missing data rows.', 'danger');
+          return;
+        }
+
+        const headers = rows[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
+        const parsedStudents = [];
+
+        for (let i = 1; i < rows.length; i++) {
+          const columns = rows[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+          if (columns.length < headers.length) continue;
+
+          const student = {};
+          headers.forEach((header, index) => {
+            student[header] = columns[index];
+          });
+          
+          if (student.register_number && student.full_name && student.email) {
+            parsedStudents.push(student);
+          }
+        }
+
+        if (parsedStudents.length === 0) {
+          showAlert('No valid student records found in CSV. Required headers: register_number, full_name, email, phone, id_card_number, year, section, programme, advisor_name.', 'danger');
+          return;
+        }
+
+        setIsUploading(true);
+        const res = await api.post('/hod/bulk-register-students', { students: parsedStudents });
+        if (res.data.success) {
+          showAlert(res.data.message || `Successfully registered ${res.data.count} students!`, 'success');
+          setCsvFile(null);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error processing CSV upload.', 'danger');
+      } finally {
+        setIsUploading(false);
+      }
+    };
+    reader.readAsText(csvFile);
+  };
+
+  const handleDeleteBatch = () => {
+    showConfirm(`WARNING: Are you sure you want to delete all students registered for batch "${selectedWipeYear}"? This will also remove their clearance applications.`, async () => {
+      try {
+        const res = await api.delete(`/hod/students/year/${selectedWipeYear}`);
+        if (res.data.success) {
+          showAlert(res.data.message);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error deleting student batch.', 'danger');
+      }
+    });
+  };
+
+  const handleWipeAll = () => {
+    showConfirm('CRITICAL WARNING: This action will PERMANENTLY WIPE ALL student profiles, clearance requests, and dues records for all academic years. Are you sure you want to proceed with full database wipe?', async () => {
+      try {
+        const res = await api.delete('/hod/students/all');
+        if (res.data.success) {
+          showAlert(res.data.message);
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error wiping department student database.', 'danger');
+      }
+    });
   };
 
   if (loading || !dashboardData) {
@@ -372,14 +469,90 @@ export const HODDashboard = () => {
 
           {/* TAB 4: DEPARTMENT STUDENT MASTER ROSTER */}
           {activeTab === 'students' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              
+              {/* Roster Administration Controls Card */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                
+                {/* Excel / CSV Bulk Registration Panel */}
+                <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs space-y-3">
+                  <div className="flex items-center gap-2 text-slate-800">
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                    <h4 className="font-bold text-xs uppercase tracking-wider">Bulk Student Import (CSV / Excel)</h4>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Upload new batch roster. CSV headers required: <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700 font-mono">register_number, full_name, email, phone, id_card_number, year, section, programme, advisor_name</code>
+                  </p>
+                  
+                  <form onSubmit={handleCSVUpload} className="space-y-3 pt-1">
+                    <input 
+                      type="file" 
+                      accept=".csv"
+                      onChange={(e) => setCsvFile(e.target.files[0])}
+                      className="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isUploading || !csvFile}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploading ? 'Registering Students...' : 'Upload & Add Batch Roster'}</span>
+                    </button>
+                  </form>
+                </div>
+
+                {/* Batch Wipe & Department Reset Panel */}
+                <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs space-y-3">
+                  <div className="flex items-center gap-2 text-red-700">
+                    <ShieldAlert className="w-5 h-5" />
+                    <h4 className="font-bold text-xs uppercase tracking-wider">Academic Batch Reset & Data Wipe</h4>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Remove completed student batches or clear student roster for the upcoming academic cycle.
+                  </p>
+
+                  <div className="space-y-3 pt-1">
+                    <div className="flex items-center gap-2">
+                      <select 
+                        value={selectedWipeYear}
+                        onChange={(e) => setSelectedWipeYear(e.target.value)}
+                        className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 flex-1"
+                      >
+                        <option value="IV Year">IV Year Batch</option>
+                        <option value="III Year">III Year Batch</option>
+                        <option value="II Year">II Year Batch</option>
+                        <option value="I Year">I Year Batch</option>
+                      </select>
+                      <button
+                        onClick={handleDeleteBatch}
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg text-xs transition-colors flex items-center gap-1 shrink-0 shadow-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Batch</span>
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={handleWipeAll}
+                      className="w-full py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Clear & Wipe All Department Student Records</span>
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Department Roster Directory Table */}
               <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                     <Users className="w-4 h-4 text-emerald-600" />
                     <span>Department Student Master Roster ({allStudents.length} Students)</span>
                   </h3>
-                  <p className="text-xs text-slate-500">Comprehensive IT department student directory across 3rd & 4th Year B.Tech IT advisee batches</p>
+                  <p className="text-xs text-slate-500">Sorted by Academic Year and Student Name (Alphabetical)</p>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs font-semibold">
@@ -405,6 +578,13 @@ export const HODDashboard = () => {
                 ]}
                 data={allStudents}
                 searchPlaceholder="Search by student name, register number, advisor..."
+                filterKey="year"
+                filterOptions={[
+                  { value: 'IV Year', label: 'IV Year Only' },
+                  { value: 'III Year', label: 'III Year Only' },
+                  { value: 'II Year', label: 'II Year Only' },
+                  { value: 'I Year', label: 'I Year Only' }
+                ]}
               />
             </div>
           )}
@@ -556,9 +736,13 @@ export const HODDashboard = () => {
                 rows={3}
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
-                placeholder="Final clearance remarks..."
+                placeholder="Final clearance remarks (optional for approval, mandatory for rejection)..."
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-medium text-slate-800"
               />
+              <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                <span>If Rejected or Put On Hold, this remark will be sent as a notification to <strong>the Student and their Faculty Advisor</strong>.</span>
+              </p>
             </div>
 
             <div className="pt-4 border-t border-slate-100 flex justify-end gap-2">
@@ -568,6 +752,15 @@ export const HODDashboard = () => {
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg"
               >
                 Close
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleHODAction('Hold')}
+                disabled={submitting}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-xs"
+              >
+                Put On Hold
               </button>
 
               <button
