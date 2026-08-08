@@ -1,6 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
 
 // Get Faculty Advisor (FA) Dashboard Statistics & Advisees
 exports.getFADashboard = async (req, res) => {
@@ -105,8 +105,16 @@ exports.processFAAction = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No-Dues Request record not found.' });
     }
 
-    if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
-      return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });
+    if (action === 'Approve') {
+      const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
+      const financeStage = stages.find(s => s.department_name === 'Finance');
+
+      if (!financeStage || financeStage.status !== 'Approved') {
+        return res.status(400).json({
+          success: false,
+          message: 'Faculty Advisor clearance is locked until Finance section clearance is approved.'
+        });
+      }
     }
 
     const newStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : 'Hold');
@@ -118,6 +126,17 @@ exports.processFAAction = async (req, res) => {
        WHERE request_id = ? AND department_name = 'Faculty Advisor'`,
       [newStatus, approverName, remarks || 'Faculty Advisor approval granted.', requestId]
     );
+
+    // Audit Log Entry
+    await logAuditEntry({
+      requestId,
+      departmentName: 'Faculty Advisor',
+      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
+      actorName: approverName,
+      actorRole: 'faculty_advisor',
+      statusAfter: newStatus,
+      remarks: remarks || (action === 'Approve' ? 'Faculty Advisor clearance granted.' : 'Put on hold by Faculty Advisor.')
+    });
 
     if (action === 'Approve') {
       await query(

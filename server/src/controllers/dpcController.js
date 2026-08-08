@@ -1,6 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
 
 // Get DPC Dashboard Statistics & Submissions
 exports.getDPCDashboard = async (req, res) => {
@@ -104,19 +104,43 @@ exports.processDPCAction = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No-Dues Request record not found.' });
     }
 
+    if (action === 'Approve') {
+      const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
+      const mainLibStage = stages.find(s => s.department_name === 'Central Library');
+      const deptLibStage = stages.find(s => s.department_name === 'Department Library');
+
+      if (!mainLibStage || mainLibStage.status !== 'Approved' || !deptLibStage || deptLibStage.status !== 'Approved') {
+        return res.status(400).json({
+          success: false,
+          message: 'DPC approval is locked until BOTH Central Library and Department Library clearances are approved.'
+        });
+      }
+    }
+
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
       return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });
     }
 
     const newStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : 'Hold');
 
-    // Update DPC Stage (Stage 5)
+    // Update DPC Stage
     await query(
       `UPDATE nodues_stages 
        SET status = ?, approved_by = ?, remarks = ?, updated_at = datetime('now')
        WHERE request_id = ? AND department_name = 'DPC'`,
       [newStatus, approverName, remarks || `Career Pathway (${request.career_option || 'General'}) verified and cleared by DPC.`, requestId]
     );
+
+    // Audit Log Entry
+    await logAuditEntry({
+      requestId,
+      departmentName: 'DPC',
+      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
+      actorName: approverName,
+      actorRole: 'dpc',
+      statusAfter: newStatus,
+      remarks: remarks || `Career Pathway (${request.career_option || 'General'}) verified and cleared by DPC.`
+    });
 
     if (action === 'Approve') {
       await query(

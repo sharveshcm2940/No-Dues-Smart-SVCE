@@ -1,5 +1,5 @@
 const { query, getOne } = require('../config/db');
-const { updateRequestProgress } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
 
 // Get Student Dashboard Data
 exports.getStudentDashboard = async (req, res) => {
@@ -158,7 +158,7 @@ exports.submitNoDuesRequest = async (req, res) => {
         startup_name, business_idea, business_details, pitch_deck_url
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 0, 'Parallel Section Review (Finance / Central Library / Dept Library)',
+        reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 0, 'Phase 1 Review (DPC / Central Library / Dept Library)',
         career_option || null, company_name || null, job_designation || null, ctc_package || null, offer_letter_url || null,
         higher_college_name || null, higher_degree || null, higher_app_form_url || null, higher_scorecard_url || null, higher_contact || null,
         exam_name || null, exam_reg_no || null, admit_card_url || null, exam_details || null,
@@ -169,11 +169,11 @@ exports.submitNoDuesRequest = async (req, res) => {
     const isFourthYear = student.year && (student.year.includes('IV') || student.year.includes('4th'));
 
     const stages = [
-      { name: 'Finance', order: 1, status: 'Pending', approved_by: null, remarks: 'Awaiting Finance clearance review.' },
-      { name: 'Central Library', order: 2, status: 'Pending', approved_by: null, remarks: 'Awaiting Central Library clearance review.' },
-      { name: 'Department Library', order: 3, status: 'Pending', approved_by: null, remarks: remarks || 'Awaiting Department Library clearance review.' },
-      { name: 'Faculty Advisor', order: 4, status: 'Pending', approved_by: null, remarks: 'Awaiting Faculty Advisor review.' },
-      { name: 'DPC', order: 5, status: isFourthYear ? 'Pending' : 'Approved', approved_by: isFourthYear ? null : 'System (Auto-Cleared)', remarks: isFourthYear ? (career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting DPC / placement verification.') : 'Not applicable for non-final year students.' },
+      { name: 'DPC', order: 1, status: isFourthYear ? 'Pending' : 'Approved', approved_by: isFourthYear ? null : 'System (Auto-Cleared)', remarks: isFourthYear ? (career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting DPC / placement verification.') : 'Not applicable for non-final year students.' },
+      { name: 'Department Library', order: 2, status: 'Pending', approved_by: null, remarks: remarks || 'Awaiting Department Library clearance review.' },
+      { name: 'Central Library', order: 3, status: 'Pending', approved_by: null, remarks: 'Awaiting Central Library clearance review.' },
+      { name: 'Finance', order: 4, status: 'Pending', approved_by: null, remarks: 'Awaiting Finance clearance review.' },
+      { name: 'Faculty Advisor', order: 5, status: 'Pending', approved_by: null, remarks: 'Awaiting Faculty Advisor review.' },
       { name: 'HOD', order: 6, status: 'Pending', approved_by: null, remarks: 'Awaiting HOD final review.' }
     ];
 
@@ -188,10 +188,32 @@ exports.submitNoDuesRequest = async (req, res) => {
     // Automatically calculate initial progress
     await updateRequestProgress(newReq.lastID);
 
+    // Log initial submission in Audit Trail
+    await logAuditEntry({
+      requestId: newReq.lastID,
+      departmentName: 'Student Submission',
+      actionType: 'Submission',
+      actorName: student.full_name,
+      actorRole: 'student',
+      statusAfter: 'Pending Library Verification',
+      remarks: remarks || 'No-Dues clearance application submitted by student.'
+    });
+
+    // Notify Student
     await query(
       `INSERT INTO notifications (target_user, title, message, type)
        VALUES (?, ?, ?, ?)`,
-      [regNo, 'No-Dues Request Submitted', `Your No-Dues request ${reqNum} was submitted successfully.`, 'success']
+      [regNo, 'No-Dues Request Submitted', `Your No-Dues request ${reqNum} was submitted successfully and sent for parallel Library Verification (Central Library & Dept Library).`, 'success']
+    );
+
+    // Notify Central Library & Dept Library
+    await query(
+      `INSERT INTO notifications (target_user, title, message, type)
+       VALUES ('main_library_staff', ?, ?, 'info'), ('library_staff', ?, ?, 'info')`,
+      [
+        'New No-Dues Clearance Request', `Student ${student.full_name} (${regNo}) has submitted a new No-Dues request ${reqNum}.`,
+        'New No-Dues Clearance Request', `Student ${student.full_name} (${regNo}) has submitted a new No-Dues request ${reqNum}.`
+      ]
     );
 
     return res.json({
@@ -418,5 +440,125 @@ exports.updateProfile = async (req, res) => {
   } catch (error) {
     console.error('Update Profile Error:', error);
     return res.status(500).json({ success: false, message: 'Error updating profile details.' });
+  }
+};
+
+// Re-submit No-Dues Request after Rejection (Targeted Re-submission)
+exports.resubmitNoDuesRequest = async (req, res) => {
+  try {
+    const regNo = req.user.username;
+    const { requestId, comment, attachmentUrl } = req.body;
+
+    if (!requestId) {
+      return res.status(400).json({ success: false, message: 'Request ID is required.' });
+    }
+
+    if (!comment || comment.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'A student comment explaining what issue was resolved is mandatory before re-submitting.'
+      });
+    }
+
+    const request = await getOne(
+      'SELECT * FROM nodues_requests WHERE id = ? AND register_number = ?',
+      [requestId, regNo]
+    );
+
+    if (!request) {
+      return res.status(404).json({ success: false, message: 'Request record not found.' });
+    }
+
+    // Find the stage that rejected the request
+    const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
+    const rejectedStage = stages.find(s => s.status === 'Rejected');
+
+    if (!rejectedStage) {
+      return res.status(400).json({
+        success: false,
+        message: 'No rejected department stage found for this request. Only rejected requests can be re-submitted.'
+      });
+    }
+
+    const deptName = rejectedStage.department_name;
+
+    // Reset rejected stage to Pending
+    await query(
+      `UPDATE nodues_stages 
+       SET status = 'Pending', approved_by = NULL, remarks = ?, updated_at = datetime('now')
+       WHERE id = ?`,
+      [`Re-submitted by student: ${comment.trim()}`, rejectedStage.id]
+    );
+
+    // Update request state & increment resubmission count
+    await query(
+      `UPDATE nodues_requests 
+       SET overall_status = 'In Progress', resubmission_count = COALESCE(resubmission_count, 0) + 1 
+       WHERE id = ?`,
+      [requestId]
+    );
+
+    // Recalculate progress & current stage
+    await updateRequestProgress(requestId);
+
+    // Log Audit Entry
+    await logAuditEntry({
+      requestId,
+      departmentName: deptName,
+      actionType: 'Re-submission',
+      actorName: request.student_name,
+      actorRole: 'student',
+      statusAfter: `Pending (${deptName})`,
+      remarks: `Re-submitted directly to ${deptName}.`,
+      studentComment: comment.trim(),
+      attachmentUrl: attachmentUrl || null
+    });
+
+    // Send notification ONLY to the rejecting department
+    const roleTargetMap = {
+      'Central Library': 'main_library_staff',
+      'Department Library': 'library_staff',
+      'DPC': 'dpc',
+      'Finance': 'finance',
+      'Faculty Advisor': 'faculty_advisor',
+      'HOD': 'hod'
+    };
+
+    const targetRole = roleTargetMap[deptName] || deptName;
+
+    await query(
+      `INSERT INTO notifications (target_user, title, message, type)
+       VALUES (?, ?, ?, ?)`,
+      [
+        targetRole,
+        `Re-submitted Clearance Request (${request.request_number})`,
+        `Student ${request.student_name} (${request.register_number}) has re-submitted their clearance request to ${deptName}. Comment: "${comment.trim()}"`,
+        'info'
+      ]
+    );
+
+    return res.json({
+      success: true,
+      message: `Your clearance request has been re-submitted directly to ${deptName}.`
+    });
+
+  } catch (error) {
+    console.error('Re-submit Request Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error processing re-submission.' });
+  }
+};
+
+// Get Audit Log Trail for a Request
+exports.getAuditLogs = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const logs = await query(
+      `SELECT * FROM nodues_audit_logs WHERE request_id = ? ORDER BY id DESC`,
+      [requestId]
+    );
+    return res.json({ success: true, logs });
+  } catch (error) {
+    console.error('Get Audit Logs Error:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching audit logs.' });
   }
 };

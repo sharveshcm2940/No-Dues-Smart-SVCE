@@ -1,6 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
 
 // Get Library Staff Dashboard Statistics
 exports.getLibraryDashboard = async (req, res) => {
@@ -180,6 +180,17 @@ exports.processNoDuesAction = async (req, res) => {
        WHERE request_id = ? AND department_name = 'Department Library'`,
       [newStatus, approverName, remarks || (action === 'Approve' ? 'Department Library clearance granted.' : 'Put on hold by Department Library.'), requestId]
     );
+
+    // Audit Log Entry
+    await logAuditEntry({
+      requestId,
+      departmentName: 'Department Library',
+      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
+      actorName: approverName,
+      actorRole: 'library_staff',
+      statusAfter: newStatus,
+      remarks: remarks || (action === 'Approve' ? 'Department Library clearance granted.' : 'Put on hold by Department Library.')
+    });
 
     // If Approved, update progress and unlock next stage (Faculty Advisor)
     if (action === 'Approve') {
@@ -448,6 +459,15 @@ exports.getReportData = async (req, res) => {
   try {
     const { type } = req.query; // 'daily', 'monthly', 'books', 'issued', 'pending_returns', 'fines', 'nodues', 'complaints'
 
+    const isFA = req.user && (req.user.role === 'faculty_advisor' || req.user.role === 'fa');
+    let faName = '';
+    const empId = req.user ? req.user.username : '';
+
+    if (isFA) {
+      const fa = await getOne('SELECT full_name FROM faculty_advisors WHERE employee_id = ?', [empId]);
+      faName = fa ? fa.full_name : '';
+    }
+
     let reportTitle = 'Enterprise System Report';
     let columns = [];
     let rows = [];
@@ -458,39 +478,96 @@ exports.getReportData = async (req, res) => {
       const data = await query('SELECT * FROM books ORDER BY title ASC');
       rows = data.map(b => [b.book_id, b.title, b.author, b.publisher, b.category, b.shelf_number, b.total_copies, b.available_copies, b.issued_copies, b.status]);
     } else if (type === 'issued') {
-      reportTitle = 'Issued Books & Active Circulation Report';
+      reportTitle = isFA ? `Allocated Advisees Issued Books Report (${faName || 'Faculty Advisor'})` : 'Issued Books & Active Circulation Report';
       columns = ['Reg Number', 'Book ID', 'Title', 'Issue Date', 'Due Date', 'Fine (₹)', 'Status'];
-      const data = await query(`
-        SELECT br.*, b.title 
-        FROM borrow_records br 
-        JOIN books b ON br.book_id = b.book_id 
-        WHERE br.status = 'Issued'
-      `);
+      
+      let data = [];
+      if (isFA) {
+        data = await query(`
+          SELECT br.*, COALESCE(b.title, br.remarks, 'Library Item') as title 
+          FROM borrow_records br 
+          JOIN students s ON br.register_number = s.register_number
+          LEFT JOIN books b ON br.book_id = b.book_id 
+          WHERE br.status = 'Issued' AND (s.advisor_emp_id = ? OR s.advisor_name = ?)
+          ORDER BY br.id DESC
+        `, [empId, faName]);
+      } else {
+        data = await query(`
+          SELECT br.*, COALESCE(b.title, br.remarks, 'Library Item') as title 
+          FROM borrow_records br 
+          LEFT JOIN books b ON br.book_id = b.book_id 
+          WHERE br.status = 'Issued'
+          ORDER BY br.id DESC
+        `);
+      }
       rows = data.map(b => [b.register_number, b.book_id, b.title, b.issue_date, b.due_date, b.fine_amount, b.status]);
     } else if (type === 'nodues') {
-      reportTitle = 'Final Year No-Dues Clearance Applications Report';
+      reportTitle = isFA ? `Allocated Advisees No-Dues Clearance Applications Report (${faName || 'Faculty Advisor'})` : 'Final Year No-Dues Clearance Applications Report';
       columns = ['Request ID', 'Reg Number', 'Student Name', 'Department', 'Current Stage', 'Overall Status', 'Progress (%)', 'Date'];
-      const data = await query('SELECT * FROM nodues_requests ORDER BY id DESC');
+      
+      let data = [];
+      if (isFA) {
+        data = await query(`
+          SELECT nr.* 
+          FROM nodues_requests nr
+          JOIN students s ON nr.register_number = s.register_number
+          WHERE s.advisor_emp_id = ? OR s.advisor_name = ?
+          ORDER BY nr.id DESC
+        `, [empId, faName]);
+      } else {
+        data = await query('SELECT * FROM nodues_requests ORDER BY id DESC');
+      }
       rows = data.map(n => [n.request_number, n.register_number, n.student_name, n.department, n.current_stage, n.overall_status, `${n.progress_percentage}%`, n.request_date]);
     } else if (type === 'fines') {
-      reportTitle = 'Fine Collections & Unpaid Dues Audit Report';
+      reportTitle = isFA ? `Allocated Advisees Fine Collections Report (${faName || 'Faculty Advisor'})` : 'Fine Collections & Unpaid Dues Audit Report';
       columns = ['Reg Number', 'Book ID', 'Issue Date', 'Due Date', 'Fine Amount (₹)', 'Fine Status'];
-      const data = await query('SELECT * FROM borrow_records WHERE fine_amount > 0');
+      
+      let data = [];
+      if (isFA) {
+        data = await query(`
+          SELECT br.* 
+          FROM borrow_records br
+          JOIN students s ON br.register_number = s.register_number
+          WHERE br.fine_amount > 0 AND (s.advisor_emp_id = ? OR s.advisor_name = ?)
+          ORDER BY br.id DESC
+        `, [empId, faName]);
+      } else {
+        data = await query('SELECT * FROM borrow_records WHERE fine_amount > 0 ORDER BY id DESC');
+      }
       rows = data.map(f => [f.register_number, f.book_id, f.issue_date, f.due_date, `₹${f.fine_amount}`, f.fine_status]);
     } else {
-      reportTitle = 'IT Department No-Dues Master Summary Report';
+      reportTitle = isFA ? `Allocated Advisees Master Clearance Audit Summary (${faName || 'Faculty Advisor'})` : 'IT Department No-Dues Master Summary Report';
       columns = ['Reg Number', 'Student Name', 'Dept', 'Year', 'Books Issued', 'Unpaid Fine', 'No-Dues Status'];
-      const data = await query(`
-        SELECT 
-          s.register_number,
-          s.full_name,
-          s.department,
-          s.year,
-          (SELECT COUNT(*) FROM borrow_records br WHERE br.register_number = s.register_number AND br.status = 'Issued') as books_issued,
-          (SELECT COALESCE(SUM(fine_amount), 0) FROM borrow_records br WHERE br.register_number = s.register_number AND br.fine_status = 'Unpaid') as fine_unpaid,
-          (SELECT overall_status FROM nodues_requests nr WHERE nr.register_number = s.register_number ORDER BY id DESC LIMIT 1) as nodues_status
-        FROM students s
-      `);
+      
+      let data = [];
+      if (isFA) {
+        data = await query(`
+          SELECT 
+            s.register_number,
+            s.full_name,
+            s.department,
+            s.year,
+            (SELECT COUNT(*) FROM borrow_records br WHERE br.register_number = s.register_number AND br.status = 'Issued') as books_issued,
+            (SELECT COALESCE(SUM(fine_amount), 0) FROM borrow_records br WHERE br.register_number = s.register_number AND br.fine_status = 'Unpaid') as fine_unpaid,
+            (SELECT overall_status FROM nodues_requests nr WHERE nr.register_number = s.register_number ORDER BY id DESC LIMIT 1) as nodues_status
+          FROM students s
+          WHERE s.advisor_emp_id = ? OR s.advisor_name = ?
+          ORDER BY s.full_name ASC
+        `, [empId, faName]);
+      } else {
+        data = await query(`
+          SELECT 
+            s.register_number,
+            s.full_name,
+            s.department,
+            s.year,
+            (SELECT COUNT(*) FROM borrow_records br WHERE br.register_number = s.register_number AND br.status = 'Issued') as books_issued,
+            (SELECT COALESCE(SUM(fine_amount), 0) FROM borrow_records br WHERE br.register_number = s.register_number AND br.fine_status = 'Unpaid') as fine_unpaid,
+            (SELECT overall_status FROM nodues_requests nr WHERE nr.register_number = s.register_number ORDER BY id DESC LIMIT 1) as nodues_status
+          FROM students s
+          ORDER BY s.full_name ASC
+        `);
+      }
       rows = data.map(d => [d.register_number, d.full_name, d.department, d.year, d.books_issued, `₹${d.fine_unpaid}`, d.nodues_status || 'Not Submitted']);
     }
 

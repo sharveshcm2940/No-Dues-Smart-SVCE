@@ -190,8 +190,31 @@ async function seedDatabase() {
     company_name TEXT, job_designation TEXT, ctc_package TEXT, offer_letter_url TEXT,
     higher_college_name TEXT, higher_degree TEXT, higher_app_form_url TEXT, higher_scorecard_url TEXT, higher_contact TEXT,
     exam_name TEXT, exam_reg_no TEXT, admit_card_url TEXT, exam_details TEXT,
-    startup_name TEXT, business_idea TEXT, business_details TEXT, pitch_deck_url TEXT
+    startup_name TEXT, business_idea TEXT, business_details TEXT, pitch_deck_url TEXT,
+    resubmission_count INTEGER DEFAULT 0
   )`);
+
+  await query(`CREATE TABLE IF NOT EXISTS nodues_audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL,
+    department_name TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    actor_name TEXT NOT NULL,
+    actor_role TEXT NOT NULL,
+    status_after TEXT NOT NULL,
+    remarks TEXT,
+    student_comment TEXT,
+    attachment_url TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(request_id) REFERENCES nodues_requests(id)
+  )`);
+
+  // Safe migration for resubmission_count column if table already exists
+  try {
+    await query(`ALTER TABLE nodues_requests ADD COLUMN resubmission_count INTEGER DEFAULT 0`);
+  } catch (err) {
+    // Column already exists
+  }
 
   await query(`CREATE TABLE IF NOT EXISTS nodues_stages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -268,6 +291,17 @@ async function seedDatabase() {
     WHERE status = 'Locked'
   `);
 
+  // Migrate/sync stage order numbers for existing records
+  await query(`UPDATE nodues_stages SET stage_order = 1 WHERE department_name = 'DPC'`);
+  await query(`UPDATE nodues_stages SET stage_order = 2 WHERE department_name = 'Department Library'`);
+  await query(`UPDATE nodues_stages SET stage_order = 3 WHERE department_name = 'Central Library'`);
+  await query(`UPDATE nodues_stages SET stage_order = 4 WHERE department_name = 'Finance'`);
+  await query(`UPDATE nodues_stages SET stage_order = 5 WHERE department_name = 'Faculty Advisor'`);
+  await query(`UPDATE nodues_stages SET stage_order = 6 WHERE department_name = 'HOD'`);
+
+  const { syncAllRequestsProgress } = require('../utils/workflowHelper');
+  await syncAllRequestsProgress();
+
   // Re-enable foreign keys
   await query('PRAGMA foreign_keys = ON');
 
@@ -334,11 +368,11 @@ async function seedDatabase() {
     ]);
     if (req.changes > 0) {
       const stages=[
-        {n:'Finance',o:1,s:'Pending',by:null,r:'Awaiting Finance clearance review.'},
-        {n:'Central Library',o:2,s:'Pending',by:null,r:'Awaiting Central Library clearance review.'},
-        {n:'Department Library',o:3,s:'Pending',by:null,r:'Awaiting Department Library clearance review.'},
-        {n:'Faculty Advisor',o:4,s:'Pending',by:null,r:'Awaiting Faculty Advisor review.'},
-        {n:'DPC',o:5,s:'Pending',by:null,r:'Awaiting DPC verification of Career Option: '+st.opt},
+        {n:'DPC',o:1,s:'Pending',by:null,r:'Awaiting DPC verification of Career Option: '+st.opt},
+        {n:'Department Library',o:2,s:'Pending',by:null,r:'Awaiting Department Library clearance review.'},
+        {n:'Central Library',o:3,s:'Pending',by:null,r:'Awaiting Central Library clearance review.'},
+        {n:'Finance',o:4,s:'Pending',by:null,r:'Awaiting Finance clearance review.'},
+        {n:'Faculty Advisor',o:5,s:'Pending',by:null,r:'Awaiting Faculty Advisor review.'},
         {n:'HOD',o:6,s:'Pending',by:null,r:'Awaiting HOD final review.'}
       ];
       for (const sg of stages) await query(`INSERT INTO nodues_stages (request_id,department_name,stage_order,status,updated_at,approved_by,remarks) VALUES (?,?,?,?,datetime('now'),?,?)`,[req.lastID,sg.n,sg.o,sg.s,sg.by,sg.r]);

@@ -40,6 +40,19 @@ router.post(
   studentController.cancelNoDuesRequest
 );
 
+router.post(
+  '/student/resubmit-nodues',
+  authenticateToken,
+  authorizeRole(['student']),
+  studentController.resubmitNoDuesRequest
+);
+
+router.get(
+  '/student/audit-logs/:requestId',
+  authenticateToken,
+  studentController.getAuditLogs
+);
+
 router.get(
   '/student/borrow-records',
   authenticateToken,

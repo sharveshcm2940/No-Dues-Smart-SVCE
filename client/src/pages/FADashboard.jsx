@@ -89,7 +89,7 @@ export const FADashboard = () => {
   const handleFAAction = async (action) => {
     if (!selectedRequest) return;
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
-      alert('Mandatory Remarks Required for Rejection.');
+      showAlert('Mandatory Remarks Required for Rejection.', 'danger');
       return;
     }
 
@@ -102,13 +102,13 @@ export const FADashboard = () => {
       });
 
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         setShowApprovalModal(false);
         setRemarks('');
         fetchDashboard();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Error processing FA action.');
+      showAlert(err.response?.data?.message || 'Error processing FA action.', 'danger');
     } finally {
       setSubmitting(false);
     }

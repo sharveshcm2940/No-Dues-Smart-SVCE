@@ -1,6 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
 
 // Get Main Library Dashboard Stats & Requests
 exports.getMainLibraryDashboard = async (req, res) => {
@@ -106,6 +106,17 @@ exports.processMainLibraryAction = async (req, res) => {
        WHERE request_id = ? AND department_name = 'Central Library'`,
       [newStatus, approverName, remarks || 'Central library books and fines cleared.', requestId]
     );
+
+    // Audit Log Entry
+    await logAuditEntry({
+      requestId,
+      departmentName: 'Central Library',
+      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
+      actorName: approverName,
+      actorRole: 'main_library_staff',
+      statusAfter: newStatus,
+      remarks: remarks || (action === 'Approve' ? 'Central library books and fines cleared.' : 'Put on hold by Central Library.')
+    });
 
     if (action === 'Approve') {
       await query(

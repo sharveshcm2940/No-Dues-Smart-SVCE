@@ -80,7 +80,7 @@ export const DPCDashboard = () => {
   const handleDPCAction = async (action) => {
     if (!selectedRequest) return;
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
-      alert('Mandatory Remarks Required for Rejection.');
+      showAlert('Mandatory Remarks Required for Rejection.', 'danger');
       return;
     }
 
@@ -93,13 +93,13 @@ export const DPCDashboard = () => {
       });
 
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         setShowApprovalModal(false);
         setRemarks('');
         fetchDashboard();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Error processing DPC clearance.');
+      showAlert(err.response?.data?.message || 'Error processing DPC clearance.', 'danger');
     } finally {
       setSubmitting(false);
     }
@@ -245,13 +245,13 @@ export const DPCDashboard = () => {
 
               </div>
 
-              {/* STAGE 5 PENDING CAREER VERIFICATION DESK */}
+              {/* STAGE 1 PENDING CAREER VERIFICATION DESK */}
               <div className="space-y-3 bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <Clock className="w-4 h-4 text-amber-600" />
-                      <span>Pending Stage 5 Career Verification Requests ({pendingDPCRequests.length})</span>
+                      <span>Pending Stage 1 Career Verification Requests ({pendingDPCRequests.length})</span>
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
                       Review 4th Year student career credentials (offer letters, scorecards, admit cards, business plans)

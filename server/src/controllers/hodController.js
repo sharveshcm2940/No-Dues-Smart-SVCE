@@ -1,6 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
 
 // Get HOD Executive Overview Dashboard Statistics
 exports.getHODDashboard = async (req, res) => {
@@ -121,6 +121,16 @@ exports.processHODAction = async (req, res) => {
     }
 
     if (action === 'Approve') {
+      const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
+      const faStage = stages.find(s => s.department_name === 'Faculty Advisor');
+
+      if (!faStage || faStage.status !== 'Approved') {
+        return res.status(400).json({
+          success: false,
+          message: 'HOD final sign-off is locked until Faculty Advisor clearance is approved.'
+        });
+      }
+
       // Update HOD Stage
       await query(
         `UPDATE nodues_stages 
@@ -128,6 +138,17 @@ exports.processHODAction = async (req, res) => {
          WHERE request_id = ? AND department_name = 'HOD'`,
         [approverName, remarks || 'Head of Department approval granted.', requestId]
       );
+
+      // Audit Log Entry
+      await logAuditEntry({
+        requestId,
+        departmentName: 'HOD',
+        actionType: 'Approval',
+        actorName: approverName,
+        actorRole: 'hod',
+        statusAfter: 'Approved',
+        remarks: remarks || 'Head of Department final clearance granted.'
+      });
 
       const result = await updateRequestProgress(requestId);
 
@@ -158,6 +179,17 @@ exports.processHODAction = async (req, res) => {
          WHERE request_id = ? AND department_name = 'HOD'`,
         [newStatus, approverName, remarks, requestId]
       );
+
+      // Audit Log Entry
+      await logAuditEntry({
+        requestId,
+        departmentName: 'HOD',
+        actionType: action === 'Reject' ? 'Rejection' : 'Hold',
+        actorName: approverName,
+        actorRole: 'hod',
+        statusAfter: newStatus,
+        remarks: remarks || (action === 'Reject' ? 'Rejection by HOD.' : 'Put on hold by HOD.')
+      });
 
       if (action === 'Reject') {
         await query(

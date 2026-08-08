@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, 
   Clock, 
@@ -14,16 +14,88 @@ import {
   Lightbulb,
   Upload,
   FileText,
-  X
+  X,
+  RotateCcw,
+  History
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import Modal from '../common/Modal';
+import { useAlert } from '../../context/AlertContext';
+import { formatDateTime } from '../../utils/dateUtils';
+import api from '../../services/api';
 
-export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onCancelRequest, profile }) => {
+export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onCancelRequest, profile, autoOpenModal, onClearAutoOpenModal }) => {
+  const { showAlert } = useAlert();
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [remarks, setRemarks] = useState('');
   const [declared, setDeclared] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // Re-submission form state
+  const [showResubmitModal, setShowResubmitModal] = useState(false);
+  const [resubmitComment, setResubmitComment] = useState('');
+  const [resubmitProofUrl, setResubmitProofUrl] = useState('');
+  const [resubmitProofName, setResubmitProofName] = useState('');
+  const [submittingResubmit, setSubmittingResubmit] = useState(false);
+
+  // Audit Logs state
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
+
+  const fetchAuditLogs = async () => {
+    if (!activeRequest?.id) return;
+    try {
+      setLoadingAuditLogs(true);
+      const res = await api.get(`/student/audit-logs/${activeRequest.id}`);
+      if (res.data.success) {
+        setAuditLogs(res.data.logs || []);
+      }
+    } catch (err) {
+      console.error('Error fetching audit logs:', err);
+    } finally {
+      setLoadingAuditLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeRequest?.id) {
+      fetchAuditLogs();
+    }
+  }, [activeRequest?.id, activeRequest?.overall_status, activeRequest?.resubmission_count]);
+
+  const rejectedStage = stages.find(s => s.status === 'Rejected');
+
+  const handleResubmitSubmit = async (e) => {
+    e.preventDefault();
+    if (!resubmitComment || !resubmitComment.trim()) {
+      showAlert('A student comment explaining what issue was resolved is mandatory before re-submitting.', 'danger');
+      return;
+    }
+
+    setSubmittingResubmit(true);
+    try {
+      const res = await api.post('/student/resubmit-nodues', {
+        requestId: activeRequest.id,
+        comment: resubmitComment,
+        attachmentUrl: resubmitProofUrl || null
+      });
+
+      if (res.data.success) {
+        showAlert(res.data.message, 'success');
+        setShowResubmitModal(false);
+        setResubmitComment('');
+        setResubmitProofUrl('');
+        setResubmitProofName('');
+        if (onSubmitRequest) onSubmitRequest({ refreshOnly: true });
+        fetchAuditLogs();
+      }
+    } catch (err) {
+      console.error('Re-submit error:', err);
+      showAlert(err.response?.data?.message || err.message || 'Error re-submitting request.', 'danger');
+    } finally {
+      setSubmittingResubmit(false);
+    }
+  };
 
   // Check strictly if the logged in student is in 4th Year (IV Year / Final Year)
   const isFourthYear = profile?.year && (
@@ -32,6 +104,20 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
     profile.year.includes('Fourth') || 
     profile.year === 'IV Year'
   );
+
+  const handleOpenSubmitModal = () => {
+    if (isFourthYear) {
+      showAlert('As a Final Year (4th Year) student, please submit your mandatory Career Pathway details (Placements / Higher Studies / Competitive Exams / Entrepreneurship) for DPC clearance.', 'info');
+    }
+    setShowSubmitModal(true);
+  };
+
+  useEffect(() => {
+    if (autoOpenModal) {
+      handleOpenSubmitModal();
+      if (onClearAutoOpenModal) onClearAutoOpenModal();
+    }
+  }, [autoOpenModal]);
 
   // 4th Year Career Pathway Form State
   const [careerOption, setCareerOption] = useState('Placements');
@@ -72,7 +158,8 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
     if (!file) return;
 
     if (file.size > 8 * 1024 * 1024) {
-      alert('File size exceeds 8MB limit. Please upload a smaller file.');
+      showAlert('File size exceeds 8MB limit. Please upload a smaller file.', 'danger');
+      e.target.value = '';
       return;
     }
 
@@ -87,7 +174,7 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
   const handleModalSubmit = async (e) => {
     e.preventDefault();
     if (!declared) {
-      alert('Please accept the student declaration before submitting.');
+      showAlert('Please accept the student declaration before submitting.', 'danger');
       return;
     }
 
@@ -632,7 +719,7 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
           Submit your online No-Dues clearance application to initiate multi-department verification across Finance, Central Library, IT Department Library, Faculty Advisor, DPC, and HOD.
         </p>
         <button
-          onClick={() => setShowSubmitModal(true)}
+          onClick={handleOpenSubmitModal}
           className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-all flex items-center gap-2 mx-auto"
         >
           <ShieldCheck className="w-4 h-4" />
@@ -682,7 +769,7 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
             )}
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Submitted Date: {new Date(activeRequest.request_date).toLocaleDateString()} | Department: {activeRequest.department}
+            Submitted Date: {formatDateTime(activeRequest.request_date)} | Department: {activeRequest.department}
           </p>
         </div>
 
@@ -720,6 +807,42 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
           )}
         </div>
       </div>
+
+      {/* Re-submission Callout Banner (Appears when any stage is Rejected) */}
+      {rejectedStage && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-xl p-5 shadow-xs space-y-3">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-red-600 shrink-0 border border-red-200 mt-0.5">
+                <XCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-sm font-extrabold text-red-900 flex items-center gap-2">
+                  <span>Clearance Rejected by {rejectedStage.department_name}</span>
+                  {activeRequest.resubmission_count > 0 && (
+                    <span className="text-[10px] bg-red-200 text-red-800 px-2 py-0.5 rounded font-mono font-bold">
+                      Re-submission Attempt #{activeRequest.resubmission_count}
+                    </span>
+                  )}
+                </h4>
+                <p className="text-xs text-red-700 mt-1">
+                  <strong>Rejection Remarks:</strong> "{rejectedStage.remarks || 'No specific remarks provided.'}"
+                </p>
+                <p className="text-[11px] text-slate-600 mt-2 leading-relaxed">
+                  You do <strong>not</strong> need to restart your application from the beginning. All previously approved departments remain valid. Re-submit your request directly to <strong>{rejectedStage.department_name}</strong> with clarification or supporting proof.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowResubmitModal(true)}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-lg shadow-sm transition-all flex items-center gap-1.5 shrink-0"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Re-submit to {rejectedStage.department_name}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Progress Percentage Bar */}
       <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-xs">
@@ -791,7 +914,7 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
                     </div>
                     <div>
                       <span className="font-semibold text-slate-700">Timestamp:</span>{' '}
-                      {st.updated_at ? new Date(st.updated_at).toLocaleString() : 'Waiting'}
+                      {st.updated_at ? formatDateTime(st.updated_at) : 'Waiting'}
                     </div>
                   </div>
 
@@ -808,6 +931,69 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
         </div>
       </div>
 
+      {/* Permanent Audit Trail & History Log */}
+      <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-xs space-y-4">
+        <h4 className="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-2">
+          <History className="w-4 h-4 text-brand-600" />
+          <span>Audit Trail & Permanent Action History ({auditLogs.length} Events)</span>
+        </h4>
+
+        {auditLogs.length === 0 ? (
+          <p className="text-xs text-slate-500 italic">No audit log entries recorded yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {auditLogs.map((log) => (
+              <div key={log.id} className="p-3.5 rounded-lg border border-slate-200 bg-slate-50/70 text-xs space-y-1.5">
+                <div className="flex items-center justify-between font-bold text-slate-800">
+                  <span className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                      log.action_type === 'Approval' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                      log.action_type === 'Rejection' ? 'bg-red-100 text-red-800 border border-red-200' :
+                      log.action_type === 'Re-submission' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                      'bg-slate-200 text-slate-800'
+                    }`}>
+                      {log.action_type}
+                    </span>
+                    <span>{log.department_name}</span>
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-mono">{formatDateTime(log.timestamp)}</span>
+                </div>
+
+                <div className="text-slate-600 font-medium">
+                  <strong>User / Officer:</strong> {log.actor_name} ({log.actor_role})
+                </div>
+
+                {log.remarks && (
+                  <div className="text-slate-700 bg-white p-2 rounded border border-slate-200 font-mono text-[11px]">
+                    <strong>Official Remarks:</strong> "{log.remarks}"
+                  </div>
+                )}
+
+                {log.student_comment && (
+                  <div className="text-blue-900 bg-blue-50/80 p-2 rounded border border-blue-200 font-sans text-[11px]">
+                    <strong>Student Re-submission Comment:</strong> "{log.student_comment}"
+                  </div>
+                )}
+
+                {log.attachment_url && (
+                  <div className="pt-1">
+                    <a
+                      href={log.attachment_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-brand-600 hover:text-brand-800 font-bold underline text-[11px] flex items-center gap-1"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>View Uploaded Proof Document</span>
+                    </a>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Submission Form Modal */}
       <Modal 
         isOpen={showSubmitModal} 
@@ -815,6 +1001,102 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
         title={isFourthYear ? "Submit New No-Dues Clearance Application (4th Year Career Verification)" : "Submit New No-Dues Clearance Application"}
       >
         {renderFormModalContent()}
+      </Modal>
+
+      {/* Targeted Re-submission Modal */}
+      <Modal
+        isOpen={showResubmitModal}
+        onClose={() => setShowResubmitModal(false)}
+        title={`Re-submit Application directly to ${rejectedStage?.department_name}`}
+      >
+        <form onSubmit={handleResubmitSubmit} className="space-y-4 text-xs">
+          <div className="bg-amber-50 p-3.5 rounded-lg border border-amber-200 text-amber-900 space-y-1">
+            <p className="font-bold flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              <span>Targeted Re-submission Routing</span>
+            </p>
+            <p className="text-[11px]">
+              This re-submitted request will go <strong>only to {rejectedStage?.department_name}</strong>. All previously approved department clearances will remain valid.
+            </p>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-800 mb-1">
+              Explanation & Action Taken (Mandatory Comment) *
+            </label>
+            <textarea
+              rows={4}
+              value={resubmitComment}
+              onChange={(e) => setResubmitComment(e.target.value)}
+              placeholder="Explain what issue has been resolved, why you are submitting again, or provide requested details..."
+              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-medium text-slate-800 text-xs focus:ring-2 focus:ring-brand-500"
+              required
+            />
+            {!resubmitComment.trim() && (
+              <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">
+                * A student comment is strictly required before re-submitting.
+              </span>
+            )}
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-800 mb-1">
+              Attach Supporting Proof Document (Optional PDF / Image)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg"
+                onChange={(e) => handleFileUpload(e, setResubmitProofUrl, setResubmitProofName)}
+                className="hidden"
+                id="resubmit-proof-file"
+              />
+              <label
+                htmlFor="resubmit-proof-file"
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-300 rounded-lg cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
+              >
+                <Upload className="w-4 h-4 text-brand-600" />
+                <span>Upload Supporting Proof...</span>
+              </label>
+              {resubmitProofName ? (
+                <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-lg border text-xs font-mono text-slate-800">
+                  <FileText className="w-4 h-4 text-brand-600" />
+                  <span className="truncate max-w-[160px]">{resubmitProofName}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setResubmitProofUrl(''); setResubmitProofName(''); }}
+                    className="text-red-500 hover:text-red-700 ml-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[11px] text-slate-400 italic">No proof attached</span>
+              )}
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              Supported formats: Fee receipts, library clearance proof, fine payment receipts (PDF, JPG, PNG). Max 8MB.
+            </p>
+          </div>
+
+          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowResubmitModal(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submittingResubmit || !resubmitComment.trim()}
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg text-xs shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>{submittingResubmit ? 'Re-submitting...' : `Confirm Re-submission to ${rejectedStage?.department_name}`}</span>
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

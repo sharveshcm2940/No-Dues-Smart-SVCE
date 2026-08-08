@@ -118,7 +118,7 @@ const FinanceDashboard = () => {
       });
 
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         setShowReviewModal(false);
         setSelectedRequest(null);
         setRemarks('');
@@ -189,7 +189,7 @@ const FinanceDashboard = () => {
 
   const exportCSV = () => {
     if (!data?.allRequests || data.allRequests.length === 0) {
-      alert('No audit data available to export.');
+      showAlert('No audit data available to export.', 'danger');
       return;
     }
     const headers = ['Request Number', 'Register Number', 'Student Name', 'Department', 'Year', 'Overall Status', 'Current Stage', 'Completion Date'];
@@ -336,7 +336,7 @@ const FinanceDashboard = () => {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-bold text-pink-400 uppercase tracking-widest">
-                        FINANCE & ACCOUNTS SECTION (STAGE 1)
+                        FINANCE & ACCOUNTS SECTION (STAGE 4)
                       </span>
                       <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-bold">
                         ACTIVE DESK

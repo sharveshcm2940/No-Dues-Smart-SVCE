@@ -118,7 +118,7 @@ const MainLibraryDashboard = () => {
       });
 
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         setShowReviewModal(false);
         setSelectedRequest(null);
         setRemarks('');
@@ -189,7 +189,7 @@ const MainLibraryDashboard = () => {
 
   const exportCSV = () => {
     if (!data?.allRequests || data.allRequests.length === 0) {
-      alert('No audit data available to export.');
+      showAlert('No audit data available to export.', 'danger');
       return;
     }
     const headers = ['Request Number', 'Register Number', 'Student Name', 'Department', 'Year', 'Overall Status', 'Current Stage', 'Completion Date'];

@@ -54,41 +54,40 @@ async function updateRequestProgress(requestId) {
       return { status: 'Rejected', progress: 0, stage: `${stageName} (Rejected)` };
     }
 
-    // Check 3 initial parallel stages (Finance, Central Library, Dept Library)
-    const initialParallelStages = [financeStage, mainLibStage, deptLibStage].filter(Boolean);
-    const approvedInitialCount = initialParallelStages.filter(s => s.status === 'Approved').length;
-    const allInitialApproved = approvedInitialCount === initialParallelStages.length;
+    // Check 2 initial parallel library stages (Central Library & Dept Library)
+    const libraryStages = [mainLibStage, deptLibStage].filter(Boolean);
+    const approvedLibraryCount = libraryStages.filter(s => s.status === 'Approved').length;
+    const allLibrariesApproved = approvedLibraryCount === libraryStages.length;
 
     let newStageName = '';
     let newProgress = 0;
     let newOverallStatus = 'In Progress';
 
-    if (!allInitialApproved) {
-      if (approvedInitialCount === 0) {
-        newProgress = 0;
-        newStageName = 'Parallel Section Review (Finance / Central Library / Dept Library)';
-      } else if (approvedInitialCount === 1) {
-        newProgress = 16;
-        const pendingNames = initialParallelStages.filter(s => s.status !== 'Approved').map(s => s.department_name).join(', ');
-        newStageName = `Parallel Review (1 of 3 cleared - Pending: ${pendingNames})`;
-      } else if (approvedInitialCount === 2) {
-        newProgress = 33;
-        const pendingNames = initialParallelStages.filter(s => s.status !== 'Approved').map(s => s.department_name).join(', ');
-        newStageName = `Parallel Review (2 of 3 cleared - Pending: ${pendingNames})`;
+    if (!allLibrariesApproved) {
+      if (approvedLibraryCount === 0) {
+        newProgress = 10;
+        newStageName = 'Pending Library Verification';
+      } else {
+        newProgress = 25;
+        const pendingNames = libraryStages.filter(s => s.status !== 'Approved').map(s => s.department_name).join(', ');
+        newStageName = `Library Verification (1 of 2 cleared - Pending: ${pendingNames})`;
       }
-    } else if (faStage && faStage.status !== 'Approved') {
-      newStageName = 'Faculty Advisor Review';
-      newProgress = 50;
     } else if (isFourthYear && dpcStage && dpcStage.status !== 'Approved') {
-      newStageName = 'DPC (Placement Verification)';
-      newProgress = 75;
+      newStageName = 'Pending DPC Approval';
+      newProgress = 40;
+    } else if (financeStage && financeStage.status !== 'Approved') {
+      newStageName = 'Pending Finance Approval';
+      newProgress = 60;
+    } else if (faStage && faStage.status !== 'Approved') {
+      newStageName = 'Pending FA Review';
+      newProgress = 80;
     } else if (hodStage && hodStage.status !== 'Approved') {
-      newStageName = 'HOD Final Review';
+      newStageName = 'Pending Final Approval (HOD)';
       newProgress = 90;
     } else {
       // All required stages are approved!
       newOverallStatus = 'Approved';
-      newStageName = 'Completed';
+      newStageName = 'Completed (No Due Certificate Approved)';
       newProgress = 100;
     }
 
@@ -124,6 +123,22 @@ async function updateRequestProgress(requestId) {
 }
 
 /**
+ * Logs an audit entry for tracking approval, rejection, hold, or student re-submission history.
+ */
+async function logAuditEntry({ requestId, departmentName, actionType, actorName, actorRole, statusAfter, remarks, studentComment, attachmentUrl }) {
+  try {
+    await query(
+      `INSERT INTO nodues_audit_logs (
+        request_id, department_name, action_type, actor_name, actor_role, status_after, remarks, student_comment, attachment_url, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      [requestId, departmentName, actionType, actorName, actorRole, statusAfter, remarks || null, studentComment || null, attachmentUrl || null]
+    );
+  } catch (err) {
+    console.error('Log Audit Entry Error:', err);
+  }
+}
+
+/**
  * Recalculates all requests in the database to sync progress and current stage.
  */
 async function syncAllRequestsProgress() {
@@ -140,5 +155,6 @@ async function syncAllRequestsProgress() {
 
 module.exports = {
   updateRequestProgress,
+  logAuditEntry,
   syncAllRequestsProgress
 };

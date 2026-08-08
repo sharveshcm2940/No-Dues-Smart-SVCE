@@ -41,6 +41,7 @@ export const StudentDashboard = () => {
 
   // Modals & Forms
   const [showComplaintModal, setShowComplaintModal] = useState(false);
+  const [autoOpenModal, setAutoOpenModal] = useState(false);
 
   // Settings State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -122,15 +123,34 @@ export const StudentDashboard = () => {
   }, []);
 
   // Handlers
+  const handleNewApplicationClick = () => {
+    const studentYear = dashboardData?.profile?.year || '';
+    const isFourthYear = studentYear.includes('IV') || 
+                         studentYear.includes('4th') || 
+                         studentYear.includes('Fourth') || 
+                         studentYear === 'IV Year';
+
+    if (isFourthYear) {
+      showAlert('As a Final Year (4th Year) student, please submit your mandatory Career Pathway details (Placements / Higher Studies / Competitive Exams / Entrepreneurship) for Stage 5 DPC clearance.', 'info');
+    }
+    setAutoOpenModal(true);
+    setActiveTab('requests');
+  };
+
   const handleSubmitRequest = async (payload = {}) => {
+    // Called with { refreshOnly: true } after re-submission — just refresh data
+    if (payload.refreshOnly) {
+      fetchDashboard();
+      return;
+    }
     try {
       const res = await api.post('/student/request-nodues', payload);
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         fetchDashboard();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Error submitting No-Dues request.');
+      showAlert(err.response?.data?.message || 'Error submitting No-Dues request.', 'danger');
     }
   };
 
@@ -152,7 +172,7 @@ export const StudentDashboard = () => {
     const res = await api.post('/student/complaints', payload);
     if (res.data.success) {
       fetchComplaints();
-      alert('Complaint ticket registered successfully!');
+      showAlert('Complaint ticket registered successfully!', 'success');
     } else {
       throw new Error(res.data.message);
     }
@@ -377,7 +397,7 @@ export const StudentDashboard = () => {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleSubmitRequest({ forceNew: true })}
+                      onClick={handleNewApplicationClick}
                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
                     >
                       <Plus className="w-4 h-4" />
@@ -404,6 +424,8 @@ export const StudentDashboard = () => {
               profile={profile}
               onSubmitRequest={handleSubmitRequest}
               onCancelRequest={handleCancelRequest}
+              autoOpenModal={autoOpenModal}
+              onClearAutoOpenModal={() => setAutoOpenModal(false)}
             />
           )}
 

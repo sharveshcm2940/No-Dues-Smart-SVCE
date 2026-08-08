@@ -101,7 +101,7 @@ export const HODDashboard = () => {
   const handleHODAction = async (action) => {
     if (!selectedRequest) return;
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
-      alert('Mandatory Remarks Required for Rejection.');
+      showAlert('Mandatory Remarks Required for Rejection.', 'danger');
       return;
     }
 
@@ -114,13 +114,13 @@ export const HODDashboard = () => {
       });
 
       if (res.data.success) {
-        alert(res.data.message);
+        showAlert(res.data.message, 'success');
         setShowApprovalModal(false);
         setRemarks('');
         fetchDashboard();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Error processing HOD sign-off.');
+      showAlert(err.response?.data?.message || 'Error processing HOD sign-off.', 'danger');
     } finally {
       setSubmitting(false);
     }
@@ -140,21 +140,22 @@ export const HODDashboard = () => {
         fetchAnnouncements();
         setAncTitle('');
         setAncDesc('');
-        alert('HOD Official Announcement published!');
+        showAlert('HOD Official Announcement published!', 'success');
       }
     } catch (err) {
-      alert('Error publishing announcement.');
+      showAlert('Error publishing announcement.', 'danger');
     }
   };
 
   const handleDeleteAnnouncement = async (id) => {
-    if (!window.confirm('Delete this announcement?')) return;
-    try {
-      const res = await api.delete(`/library/announcements/${id}`);
-      if (res.data.success) fetchAnnouncements();
-    } catch (err) {
-      alert('Error deleting announcement.');
-    }
+    showConfirm('Delete this announcement?', async () => {
+      try {
+        const res = await api.delete(`/library/announcements/${id}`);
+        if (res.data.success) fetchAnnouncements();
+      } catch (err) {
+        showAlert('Error deleting announcement.', 'danger');
+      }
+    });
   };
 
   const handlePasswordUpdate = async (e) => {
@@ -173,22 +174,23 @@ export const HODDashboard = () => {
   };
 
   const handleBulkApprove = async () => {
-    if (!window.confirm('Are you sure you want to grant final Head of Department (HOD) approval and issue Digital Certificates for ALL pending Stage 6 requests?')) return;
-    try {
-      const res = await api.post('/hod/bulk-approve');
-      if (res.data.success) {
-        alert(res.data.message);
-        fetchDashboard();
+    showConfirm('Are you sure you want to grant final HOD approval and issue Digital Certificates for ALL pending Stage 6 requests?', async () => {
+      try {
+        const res = await api.post('/hod/bulk-approve');
+        if (res.data.success) {
+          showAlert(res.data.message, 'success');
+          fetchDashboard();
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || 'Error executing bulk HOD final sign-off.', 'danger');
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error executing bulk HOD final sign-off.');
-    }
+    });
   };
 
   const handleCSVUpload = async (e) => {
     e.preventDefault();
     if (!csvFile) {
-      alert('Please select a CSV file to upload.');
+      showAlert('Please select a CSV file to upload.', 'danger');
       return;
     }
 
@@ -198,7 +200,7 @@ export const HODDashboard = () => {
         const text = event.target.result;
         const rows = text.split('\n').map(row => row.trim()).filter(row => row.length > 0);
         if (rows.length <= 1) {
-          alert('CSV file is empty or missing data rows.');
+          showAlert('CSV file is empty or missing data rows.', 'danger');
           return;
         }
 
@@ -220,19 +222,19 @@ export const HODDashboard = () => {
         }
 
         if (parsedStudents.length === 0) {
-          alert('No valid student records found in CSV. Required headers: register_number, full_name, email, phone, id_card_number, year, section, programme, advisor_name.');
+          showAlert('No valid student records found in CSV. Required headers: register_number, full_name, email, phone, id_card_number, year, section, programme, advisor_name.', 'danger');
           return;
         }
 
         setIsUploading(true);
         const res = await api.post('/hod/bulk-register-students', { students: parsedStudents });
         if (res.data.success) {
-          alert(res.data.message || `Successfully registered ${res.data.count} students!`);
+          showAlert(res.data.message || `Successfully registered ${res.data.count} students!`, 'success');
           setCsvFile(null);
           fetchDashboard();
         }
       } catch (err) {
-        alert(err.response?.data?.message || 'Error processing CSV upload.');
+        showAlert(err.response?.data?.message || 'Error processing CSV upload.', 'danger');
       } finally {
         setIsUploading(false);
       }

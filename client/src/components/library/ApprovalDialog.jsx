@@ -3,8 +3,10 @@ import Modal from '../common/Modal';
 import { ShieldCheck, AlertOctagon, CheckCircle2, XCircle, Clock, BookOpen, IndianRupee, Plus, DollarSign, Check } from 'lucide-react';
 import Badge from '../common/Badge';
 import api from '../../services/api';
+import { useAlert } from '../../context/AlertContext';
 
 export const ApprovalDialog = ({ isOpen, onClose, requestItem, onProcessAction, onRefresh }) => {
+  const { showAlert } = useAlert();
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -50,7 +52,7 @@ export const ApprovalDialog = ({ isOpen, onClose, requestItem, onProcessAction, 
   const handleAddFineSubmit = async (e) => {
     e.preventDefault();
     if (!fineAmountInput || parseFloat(fineAmountInput) <= 0) {
-      alert('Please enter a valid fine amount in Rupees (₹).');
+      showAlert('Please enter a valid fine amount in Rupees (₹).', 'danger');
       return;
     }
 

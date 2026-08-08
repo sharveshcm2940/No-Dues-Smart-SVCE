@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import SVCELogo from './SVCELogo';
 import api from '../../services/api';
+import { formatTime } from '../../utils/dateUtils';
 import { 
   Bell, 
   ShieldCheck, 
@@ -164,7 +165,7 @@ export const Header = ({ notifications: propNotifications = null, activeTab, set
                               <div className="flex items-center justify-between">
                                 <h5 className="text-xs font-bold text-slate-900 truncate">{n.title}</h5>
                                 <span className="text-[10px] text-slate-400">
-                                  {n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
+                                  {formatTime(n.created_at)}
                                 </span>
                               </div>
                               <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{n.message}</p>
