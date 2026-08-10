@@ -36,12 +36,21 @@ app.get('/health', (req, res) => {
 async function startServer() {
   try {
     await seedDatabase();
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`=======================================================`);
       console.log(` IT No-Dues System API Server Running on Port ${PORT}`);
       console.log(` Base URL: http://localhost:${PORT}/api`);
       console.log(` Health Check: http://localhost:${PORT}/health`);
       console.log(`=======================================================`);
+    });
+
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use by another process.`);
+        console.error(`   Please close the process holding Port ${PORT} or terminate process holding Port ${PORT}.`);
+      } else {
+        console.error('Server error:', error);
+      }
     });
   } catch (error) {
     console.error('Failed to start server:', error);
