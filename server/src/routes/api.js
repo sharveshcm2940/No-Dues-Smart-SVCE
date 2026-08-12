@@ -287,6 +287,17 @@ router.delete(
   hodController.clearAllStudents
 );
 
+// Faculty & Advisor Management Routes (Role: hod)
+router.get('/faculty', authenticateToken, authorizeRole(['hod']), hodController.getFacultyList);
+router.post('/faculty', authenticateToken, authorizeRole(['hod']), hodController.addFaculty);
+router.put('/faculty/:id', authenticateToken, authorizeRole(['hod']), hodController.updateFaculty);
+router.patch('/faculty/:id/status', authenticateToken, authorizeRole(['hod']), hodController.updateFacultyStatus);
+router.get('/faculty/:id/students', authenticateToken, authorizeRole(['hod', 'faculty_advisor']), hodController.getFacultyStudents);
+
+router.get('/advisor-assignments', authenticateToken, authorizeRole(['hod']), hodController.getAdvisorAssignments);
+router.post('/advisor/reassign', authenticateToken, authorizeRole(['hod']), hodController.reassignBatchAdvisor);
+router.post('/advisor/replace-faculty', authenticateToken, authorizeRole(['hod']), hodController.replaceFaculty);
+
 // Department Placement Coordinator Routes (Role: dpc)
 router.get(
   '/dpc/dashboard',

@@ -491,44 +491,6 @@ export const StudentDashboard = () => {
             </div>
           )}
 
-          {/* TAB 6: ANNOUNCEMENTS */}
-          {activeTab === 'announcements' && (
-            <div className="space-y-4">
-              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
-                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <Megaphone className="w-4 h-4 text-brand-600" />
-                  <span>IT Department & Library Announcements Feed</span>
-                </h3>
-              </div>
-
-              <div className="space-y-3">
-                {announcements.map((anc) => (
-                  <div key={anc.id} className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        {anc.is_pinned === 1 && (
-                          <span className="text-[10px] bg-red-100 text-red-800 font-bold px-2 py-0.5 rounded">
-                            PINNED
-                          </span>
-                        )}
-                        <h4 className="text-sm font-bold text-slate-900">{anc.title}</h4>
-                      </div>
-                      <span className="text-xs text-slate-400">{new Date(anc.created_at).toLocaleDateString()}</span>
-                    </div>
-
-                    <p className="text-xs text-slate-600 leading-relaxed">{anc.description}</p>
-
-                    <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
-                      <span>Category: <strong>{anc.category}</strong></span>
-                      <span>•</span>
-                      <span>Priority: <strong className="text-brand-600">{anc.priority}</strong></span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* TAB 7: SETTINGS */}
           {activeTab === 'settings' && (
             <div className="space-y-6 max-w-2xl">

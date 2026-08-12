@@ -27,7 +27,6 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'requests', label: 'No-Dues Tracker', icon: FileCheck2 },
     { id: 'certificate', label: 'Digital Certificate', icon: Award },
     { id: 'complaints', label: 'Complaint Desk', icon: MessageSquareWarning },
-    { id: 'announcements', label: 'Announcements', icon: Megaphone },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -37,7 +36,6 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'books', label: 'Book Inventory', icon: BookOpen },
     { id: 'students', label: 'Student Directory', icon: Users },
     { id: 'complaints', label: 'Complaint Tickets', icon: MessageSquareWarning },
-    { id: 'announcements', label: 'Announcements', icon: Megaphone },
     { id: 'reports', label: 'Analytics & Reports', icon: FileText },
     { id: 'settings', label: 'Staff Settings', icon: Settings },
   ];
@@ -56,7 +54,7 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'final_approvals', label: 'Stage 6 Approvals', icon: Crown },
     { id: 'master_requests', label: 'All Applications', icon: FileCheck2 },
     { id: 'students', label: 'Department Roster', icon: Users },
-    { id: 'announcements', label: 'Announcements', icon: Megaphone },
+    { id: 'faculty_management', label: 'Faculty & Advisors', icon: UserCheck },
     { id: 'reports', label: 'Master Reports', icon: FileText },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

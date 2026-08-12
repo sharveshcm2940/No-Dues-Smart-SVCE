@@ -1,6 +1,19 @@
 version: '3.8'
 
 services:
+  # MySQL Database Service
+  db:
+    image: mysql:8.0
+    container_name: svce_nodues_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: no_dues_erp
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
   # Node.js + Express Backend API Service
   backend:
     build:
@@ -10,12 +23,17 @@ services:
     restart: always
     ports:
       - "5000:5000"
-    volumes:
-      - nodues_db_data:/app/data
     environment:
       - PORT=5000
       - NODE_ENV=production
       - JWT_SECRET=svce_nodues_secure_jwt_secret_2026
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_NAME=no_dues_erp
+      - DB_USER=root
+      - DB_PASSWORD=root_password
+    depends_on:
+      - db
 
   # React + Vite + Nginx Frontend Service
   frontend:
@@ -30,4 +48,4 @@ services:
       - backend
 
 volumes:
-  nodues_db_data:
+  mysql_data:

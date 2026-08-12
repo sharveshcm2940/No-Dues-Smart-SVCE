@@ -23,7 +23,11 @@ import {
   Upload,
   UserPlus,
   FileSpreadsheet,
-  ShieldAlert
+  ShieldAlert,
+  UserCheck,
+  RefreshCw,
+  Edit3,
+  UserX
 } from 'lucide-react';
 
 import { useAlert } from '../context/AlertContext';
@@ -55,6 +59,194 @@ export const HODDashboard = () => {
   const [selectedWipeYear, setSelectedWipeYear] = useState('IV Year');
   const [csvFile, setCsvFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Faculty Management States
+  const [facultyList, setFacultyList] = useState([]);
+  const [advisorAssignments, setAdvisorAssignments] = useState([]);
+  const [activeFacultyList, setActiveFacultyList] = useState([]);
+  const [facultyLoading, setFacultyLoading] = useState(false);
+
+  // Add/Edit Faculty Modal
+  const [showFacultyModal, setShowFacultyModal] = useState(false);
+  const [editingFaculty, setEditingFaculty] = useState(null);
+  const [facultyFormData, setFacultyFormData] = useState({
+    employeeId: '', name: '', department: 'Information Technology', phone: '', email: '', status: 'ACTIVE'
+  });
+
+  // Batch & Section Reassign State
+  const [selectedBatch, setSelectedBatch] = useState('2023-2027');
+  const [selectedSection, setSelectedSection] = useState('Sec-A');
+  const [newFacultyId, setNewFacultyId] = useState('');
+  const [showReassignConfirmModal, setShowReassignConfirmModal] = useState(false);
+  const [reassignSubmitting, setReassignSubmitting] = useState(false);
+
+  // Replace Outgoing Faculty State
+  const [showReplaceModal, setShowReplaceModal] = useState(false);
+  const [outgoingFacultyId, setOutgoingFacultyId] = useState('');
+  const [replacementFacultyId, setReplacementFacultyId] = useState('');
+  const [outgoingNewStatus, setOutgoingNewStatus] = useState('INACTIVE');
+  const [selectedCohortKeys, setSelectedCohortKeys] = useState([]);
+  const [showReplaceConfirmModal, setShowReplaceConfirmModal] = useState(false);
+  const [replaceSubmitting, setReplaceSubmitting] = useState(false);
+
+  // View Faculty Advisees Modal
+  const [viewingFacultyAdvisees, setViewingFacultyAdvisees] = useState(null);
+  const [facultyAdviseesList, setFacultyAdviseesList] = useState([]);
+
+  const fetchFacultyData = async () => {
+    setFacultyLoading(true);
+    try {
+      const [facRes, assignRes] = await Promise.all([
+        api.get('/faculty'),
+        api.get('/advisor-assignments')
+      ]);
+      if (facRes.data && facRes.data.success) {
+        setFacultyList(facRes.data.data);
+      }
+      if (assignRes.data && assignRes.data.success) {
+        setAdvisorAssignments(assignRes.data.data.assignments || []);
+        setActiveFacultyList(assignRes.data.data.activeFaculty || []);
+      }
+    } catch (err) {
+      console.error('Error loading faculty management data:', err);
+    } finally {
+      setFacultyLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'faculty_management') {
+      fetchFacultyData();
+    }
+  }, [activeTab]);
+
+  const handleOpenAddFacultyModal = () => {
+    setEditingFaculty(null);
+    setFacultyFormData({ employeeId: '', name: '', department: 'Information Technology', phone: '', email: '', status: 'ACTIVE' });
+    setShowFacultyModal(true);
+  };
+
+  const handleOpenEditFacultyModal = (fac) => {
+    setEditingFaculty(fac);
+    setFacultyFormData({
+      employeeId: fac.employee_id,
+      name: fac.name,
+      department: fac.department || 'Information Technology',
+      phone: fac.phone || '',
+      email: fac.email,
+      status: fac.status || 'ACTIVE'
+    });
+    setShowFacultyModal(true);
+  };
+
+  const handleSaveFaculty = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingFaculty) {
+        const res = await api.put(`/faculty/${editingFaculty.id}`, facultyFormData);
+        if (res.data.success) {
+          showAlert(res.data.message, 'success');
+          setShowFacultyModal(false);
+          fetchFacultyData();
+        }
+      } else {
+        const res = await api.post('/faculty', facultyFormData);
+        if (res.data.success) {
+          showAlert(res.data.message, 'success');
+          setShowFacultyModal(false);
+          fetchFacultyData();
+        }
+      }
+    } catch (err) {
+      showAlert(err.response?.data?.message || 'Error saving faculty details.', 'danger');
+    }
+  };
+
+  const handleToggleFacultyStatus = async (fac, newStatus) => {
+    try {
+      const res = await api.patch(`/faculty/${fac.id}/status`, { status: newStatus });
+      if (res.data.success) {
+        showAlert(res.data.message, 'success');
+        fetchFacultyData();
+      }
+    } catch (err) {
+      showAlert(err.response?.data?.message || 'Error updating faculty status.', 'danger');
+    }
+  };
+
+  const handleViewFacultyAdvisees = async (fac) => {
+    setViewingFacultyAdvisees(fac);
+    try {
+      const res = await api.get(`/faculty/${fac.id}/students`);
+      if (res.data.success) {
+        setFacultyAdviseesList(res.data.data.students || []);
+      }
+    } catch (err) {
+      showAlert('Error loading advisees list.', 'danger');
+    }
+  };
+
+  const handleConfirmBatchReassignment = async () => {
+    if (!newFacultyId) {
+      showAlert('Please select a new Faculty Advisor.', 'danger');
+      return;
+    }
+    setReassignSubmitting(true);
+    try {
+      const res = await api.post('/advisor/reassign', {
+        academicBatch: selectedBatch,
+        section: selectedSection,
+        newFacultyId: parseInt(newFacultyId, 10)
+      });
+      if (res.data.success) {
+        showAlert(res.data.message, 'success');
+        setShowReassignConfirmModal(false);
+        setNewFacultyId('');
+        fetchFacultyData();
+        fetchDashboard();
+      }
+    } catch (err) {
+      showAlert(err.response?.data?.message || 'Error reassigning batch advisor.', 'danger');
+    } finally {
+      setReassignSubmitting(false);
+    }
+  };
+
+  const handleConfirmFacultyReplacement = async () => {
+    if (!outgoingFacultyId || !replacementFacultyId || selectedCohortKeys.length === 0) {
+      showAlert('Please select outgoing faculty, replacement faculty, and at least one student cohort.', 'danger');
+      return;
+    }
+    setReplaceSubmitting(true);
+    try {
+      const selectedGroups = selectedCohortKeys.map(k => {
+        const [batch, section] = k.split('|');
+        return { batch, section };
+      });
+
+      const res = await api.post('/advisor/replace-faculty', {
+        outgoingFacultyId: parseInt(outgoingFacultyId, 10),
+        replacementFacultyId: parseInt(replacementFacultyId, 10),
+        selectedGroups,
+        newStatus: outgoingNewStatus
+      });
+
+      if (res.data.success) {
+        showAlert(res.data.message, 'success');
+        setShowReplaceConfirmModal(false);
+        setShowReplaceModal(false);
+        setOutgoingFacultyId('');
+        setReplacementFacultyId('');
+        setSelectedCohortKeys([]);
+        fetchFacultyData();
+        fetchDashboard();
+      }
+    } catch (err) {
+      showAlert(err.response?.data?.message || 'Error completing faculty replacement.', 'danger');
+    } finally {
+      setReplaceSubmitting(false);
+    }
+  };
 
   const fetchDashboard = async () => {
     try {
@@ -603,72 +795,6 @@ export const HODDashboard = () => {
             </div>
           )}
 
-          {/* TAB 4: ANNOUNCEMENTS PUBLISHER */}
-          {activeTab === 'announcements' && (
-            <div className="space-y-6">
-              
-              <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-xs space-y-4">
-                <h3 className="text-sm font-bold text-slate-800 pb-2 border-b border-slate-100 flex items-center gap-2">
-                  <Megaphone className="w-4 h-4 text-brand-600" />
-                  <span>Publish Head of Department Executive Announcement</span>
-                </h3>
-
-                <form onSubmit={handleCreateAnnouncement} className="space-y-4 text-xs">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Announcement Title *</label>
-                    <input
-                      type="text"
-                      value={ancTitle}
-                      onChange={(e) => setAncTitle(e.target.value)}
-                      placeholder="e.g. SVCE IT Department Final Graduation Clearance Guidelines"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Description / Content *</label>
-                    <textarea
-                      rows={3}
-                      value={ancDesc}
-                      onChange={(e) => setAncDesc(e.target.value)}
-                      placeholder="Executive directive for students and faculty..."
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium"
-                      required
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg shadow-xs"
-                  >
-                    Publish Official Notice
-                  </button>
-                </form>
-              </div>
-
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Published Announcements</h4>
-                {announcements.map((anc) => (
-                  <div key={anc.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs flex items-start justify-between gap-4">
-                    <div>
-                      <h5 className="text-xs font-bold text-slate-900">{anc.title}</h5>
-                      <p className="text-xs text-slate-600 mt-1">{anc.description}</p>
-                    </div>
-
-                    <button
-                      onClick={() => handleDeleteAnnouncement(anc.id)}
-                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-            </div>
-          )}
-
           {/* TAB 5: REPORTS */}
           {activeTab === 'reports' && (
             <ReportsExporter />
@@ -723,6 +849,213 @@ export const HODDashboard = () => {
                   </button>
                 </form>
               </div>
+            </div>
+          )}
+
+          {/* TAB 7: FACULTY & ADVISOR MANAGEMENT */}
+          {activeTab === 'faculty_management' && (
+            <div className="space-y-6">
+              
+              {/* Page Title & Action Bar */}
+              <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-brand-50 rounded-lg flex items-center justify-center text-brand-600 border border-brand-200">
+                    <UserCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-bold text-brand-600 uppercase tracking-widest">
+                      DEPARTMENT ADMINISTRATION
+                    </span>
+                    <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                      Faculty & Advisor Management Desk
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Manage faculty records, dynamically assign advisors to cohorts, and bulk reassign advisees when faculty transfers or leaves.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleOpenAddFacultyModal}
+                    className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>+ Add Faculty Member</span>
+                  </button>
+                  <button
+                    onClick={() => setShowReplaceModal(true)}
+                    className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Replace Outgoing Faculty</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Section 1: Batch & Section Reassignment Tool */}
+              <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-xs space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <RefreshCw className="w-5 h-5 text-brand-600" />
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Cohort Advisor Allocation & Bulk Reassignment</h3>
+                    <p className="text-xs text-slate-500">Select an Academic Batch & Section to view current allocation and reassign a new Faculty Advisor.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Academic Batch</label>
+                    <select
+                      value={selectedBatch}
+                      onChange={(e) => setSelectedBatch(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 font-medium focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                    >
+                      <option value="2022-2026">2022-2026 (IV Year IT)</option>
+                      <option value="2023-2027">2023-2027 (III Year IT)</option>
+                      <option value="2024-2028">2024-2028 (II Year IT)</option>
+                      <option value="2025-2029">2025-2029 (I Year IT)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Section</label>
+                    <select
+                      value={selectedSection}
+                      onChange={(e) => setSelectedSection(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 font-medium focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                    >
+                      <option value="Sec-A">Section A (Sec-A)</option>
+                      <option value="Sec-B">Section B (Sec-B)</option>
+                      <option value="Sec-C">Section C (Sec-C)</option>
+                    </select>
+                  </div>
+
+                  {/* Current Allocation Info */}
+                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs">
+                    <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Current Advisor</div>
+                    <div className="font-bold text-slate-800 text-xs truncate">
+                      {
+                        advisorAssignments.find(a => a.academic_batch === selectedBatch && a.section === selectedSection)?.faculty_name || 'Unassigned / Static'
+                      }
+                    </div>
+                    <div className="text-[10px] text-brand-600 font-medium">
+                      {advisorAssignments.find(a => a.academic_batch === selectedBatch && a.section === selectedSection)?.student_count || 0} Students Assigned
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">New Faculty Advisor</label>
+                    <select
+                      value={newFacultyId}
+                      onChange={(e) => setNewFacultyId(e.target.value)}
+                      className="w-full bg-white border border-brand-300 text-slate-900 text-xs font-semibold rounded-lg p-2.5 focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                    >
+                      <option value="">-- Select New Faculty --</option>
+                      {activeFacultyList.map(fac => (
+                        <option key={fac.id} value={fac.id}>
+                          {fac.name} ({fac.employee_id})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={() => {
+                      if (!newFacultyId) {
+                        showAlert('Please select a new Faculty Advisor from the dropdown.', 'danger');
+                        return;
+                      }
+                      setShowReassignConfirmModal(true);
+                    }}
+                    className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Reassign Students</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Section 2: Master Faculty Directory Table */}
+              <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+                <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Department Faculty Roster & Advisee Counts</h3>
+                    <p className="text-xs text-slate-500">Live roster of faculty members, active statuses, and assigned student advisee numbers.</p>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                    Total Faculty: {facultyList.length}
+                  </span>
+                </div>
+
+                <DataTable
+                  columns={[
+                    { header: 'Emp ID / ID', cell: (row) => (
+                      <div className="font-mono text-xs font-bold text-slate-700">{row.employee_id}</div>
+                    )},
+                    { header: 'Faculty Name', cell: (row) => (
+                      <div>
+                        <div className="font-bold text-slate-800 text-xs">{row.name}</div>
+                        <div className="text-[10px] text-slate-500">{row.department}</div>
+                      </div>
+                    )},
+                    { header: 'Contact Info', cell: (row) => (
+                      <div>
+                        <div className="text-xs text-slate-700">{row.email}</div>
+                        <div className="text-[10px] text-slate-500">{row.phone || 'N/A'}</div>
+                      </div>
+                    )},
+                    { header: 'Status', cell: (row) => {
+                      let variant = 'success';
+                      if (row.status === 'INACTIVE' || row.status === 'RETIRED') variant = 'danger';
+                      if (row.status === 'ON_LEAVE' || row.status === 'TRANSFERRED') variant = 'warning';
+                      return <Badge variant={variant}>{row.status}</Badge>;
+                    }},
+                    { header: 'Assigned Advisees', cell: (row) => (
+                      <button
+                        onClick={() => handleViewFacultyAdvisees(row)}
+                        className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 rounded font-bold text-xs flex items-center gap-1 transition-colors"
+                      >
+                        <Users className="w-3.5 h-3.5 text-brand-600" />
+                        <span>{row.assigned_students_count || 0} Advisees</span>
+                      </button>
+                    )},
+                    { header: 'Actions', cell: (row) => (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenEditFacultyModal(row)}
+                          className="p-1.5 hover:bg-slate-100 text-slate-600 rounded transition-colors"
+                          title="Edit Faculty"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        {row.status === 'ACTIVE' ? (
+                          <button
+                            onClick={() => handleToggleFacultyStatus(row, 'INACTIVE')}
+                            className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold rounded transition-colors"
+                            title="Mark Inactive"
+                          >
+                            Deactivate
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleFacultyStatus(row, 'ACTIVE')}
+                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-bold rounded transition-colors"
+                            title="Mark Active"
+                          >
+                            Activate
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  ]}
+                  data={facultyList}
+                  emptyMessage="No faculty records found."
+                />
+              </div>
+
             </div>
           )}
 
@@ -798,6 +1131,310 @@ export const HODDashboard = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Modal 1: Batch & Section Reassign Confirmation */}
+      <Modal
+        isOpen={showReassignConfirmModal}
+        onClose={() => setShowReassignConfirmModal(false)}
+        title="Confirm Cohort Advisor Reassignment"
+      >
+        <div className="space-y-4 text-slate-700 text-xs">
+          <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-800 font-medium leading-relaxed">
+            ⚠️ <strong>You are about to reassign student advisees.</strong> All selected students will be linked to the new Faculty Advisor in the database.
+          </div>
+
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
+            <div className="flex justify-between">
+              <span className="font-semibold text-slate-500">Academic Batch:</span>
+              <span className="font-bold text-slate-800">{selectedBatch}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold text-slate-500">Section:</span>
+              <span className="font-bold text-slate-800">{selectedSection}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold text-slate-500">Current Advisor:</span>
+              <span className="font-bold text-slate-800">
+                {advisorAssignments.find(a => a.academic_batch === selectedBatch && a.section === selectedSection)?.faculty_name || 'Unassigned / Static'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold text-slate-500">Students Affected:</span>
+              <span className="font-bold text-brand-600">
+                {advisorAssignments.find(a => a.academic_batch === selectedBatch && a.section === selectedSection)?.student_count || 0} Students
+              </span>
+            </div>
+            <div className="flex justify-between border-t border-slate-200 pt-2">
+              <span className="font-semibold text-slate-500">New Faculty Advisor:</span>
+              <span className="font-bold text-emerald-600">
+                {activeFacultyList.find(f => f.id === parseInt(newFacultyId, 10))?.name || 'Selected Faculty'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => setShowReassignConfirmModal(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmBatchReassignment}
+              disabled={reassignSubmitting}
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg text-xs flex items-center gap-1.5 shadow-xs"
+            >
+              {reassignSubmitting ? 'Updating...' : 'Confirm Reassignment'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal 2: Replace Outgoing Faculty */}
+      <Modal
+        isOpen={showReplaceModal}
+        onClose={() => setShowReplaceModal(false)}
+        title="Replace Outgoing / Transferring Faculty Advisor"
+      >
+        <div className="space-y-4 text-xs">
+          <p className="text-slate-500">
+            Select an outgoing faculty member to bulk reassign their advisees to a replacement faculty member and update their status.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Outgoing Faculty</label>
+              <select
+                value={outgoingFacultyId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setOutgoingFacultyId(val);
+                  const fac = facultyList.find(f => f.id === parseInt(val, 10));
+                  if (fac) {
+                    const groups = advisorAssignments.filter(a => a.faculty_id === fac.id || a.faculty_emp_id === fac.employee_id);
+                    setSelectedCohortKeys(groups.map(g => `${g.academic_batch}|${g.section}`));
+                  }
+                }}
+                className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 font-medium"
+              >
+                <option value="">-- Select Outgoing Faculty --</option>
+                {facultyList.map(fac => (
+                  <option key={fac.id} value={fac.id}>
+                    {fac.name} ({fac.employee_id}) - {fac.assigned_students_count || 0} Advisees
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Replacement Faculty</label>
+              <select
+                value={replacementFacultyId}
+                onChange={(e) => setReplacementFacultyId(e.target.value)}
+                className="w-full bg-white border border-brand-300 text-slate-900 text-xs font-semibold rounded-lg p-2.5"
+              >
+                <option value="">-- Select Replacement Faculty --</option>
+                {activeFacultyList.filter(f => f.id !== parseInt(outgoingFacultyId, 10)).map(fac => (
+                  <option key={fac.id} value={fac.id}>
+                    {fac.name} ({fac.employee_id})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {outgoingFacultyId && (
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Select Cohorts to Reassign</label>
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2 max-h-48 overflow-y-auto">
+                {advisorAssignments.filter(a => a.faculty_id === parseInt(outgoingFacultyId, 10) || a.faculty_emp_id === facultyList.find(f => f.id === parseInt(outgoingFacultyId, 10))?.employee_id).map(g => {
+                  const key = `${g.academic_batch}|${g.section}`;
+                  const isChecked = selectedCohortKeys.includes(key);
+                  return (
+                    <label key={key} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200 cursor-pointer hover:bg-slate-50">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCohortKeys([...selectedCohortKeys, key]);
+                            } else {
+                              setSelectedCohortKeys(selectedCohortKeys.filter(k => k !== key));
+                            }
+                          }}
+                          className="rounded text-brand-600 focus:ring-brand-500"
+                        />
+                        <span className="font-bold text-slate-800">Batch {g.academic_batch} ({g.section})</span>
+                      </div>
+                      <span className="text-brand-600 font-semibold">{g.student_count} Students</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">Outgoing Faculty New Status</label>
+            <select
+              value={outgoingNewStatus}
+              onChange={(e) => setOutgoingNewStatus(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 font-medium"
+            >
+              <option value="INACTIVE">INACTIVE (Faculty Left College)</option>
+              <option value="TRANSFERRED">TRANSFERRED (Moved to another department)</option>
+              <option value="ON_LEAVE">ON_LEAVE (Sabbatical / Leave of Absence)</option>
+              <option value="RETIRED">RETIRED (Superannuated)</option>
+              <option value="ACTIVE">Keep ACTIVE</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => setShowReplaceModal(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmFacultyReplacement}
+              disabled={replaceSubmitting}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg text-xs flex items-center gap-1.5 shadow-xs"
+            >
+              {replaceSubmitting ? 'Updating...' : 'Reassign All Selected'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal 3: Add / Edit Faculty Modal */}
+      <Modal
+        isOpen={showFacultyModal}
+        onClose={() => setShowFacultyModal(false)}
+        title={editingFaculty ? 'Edit Faculty Member Details' : 'Add New Faculty Member'}
+      >
+        <form onSubmit={handleSaveFaculty} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">Faculty Employee ID</label>
+            <input
+              type="text"
+              required
+              disabled={!!editingFaculty}
+              value={facultyFormData.employeeId}
+              onChange={(e) => setFacultyFormData({ ...facultyFormData, employeeId: e.target.value })}
+              placeholder="e.g. EMP-FA-IT-05"
+              className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">Full Name (with Prefix)</label>
+            <input
+              type="text"
+              required
+              value={facultyFormData.name}
+              onChange={(e) => setFacultyFormData({ ...facultyFormData, name: e.target.value })}
+              placeholder="e.g. V. Ranjith"
+              className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 font-medium"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">Department</label>
+            <input
+              type="text"
+              value={facultyFormData.department}
+              onChange={(e) => setFacultyFormData({ ...facultyFormData, department: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 font-medium"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Email Address</label>
+              <input
+                type="email"
+                required
+                value={facultyFormData.email}
+                onChange={(e) => setFacultyFormData({ ...facultyFormData, email: e.target.value })}
+                placeholder="ranjith.v@svce.ac.in"
+                className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Phone Number</label>
+              <input
+                type="text"
+                value={facultyFormData.phone}
+                onChange={(e) => setFacultyFormData({ ...facultyFormData, phone: e.target.value })}
+                placeholder="+91 98403 33445"
+                className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 font-medium"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">Status</label>
+            <select
+              value={facultyFormData.status}
+              onChange={(e) => setFacultyFormData({ ...facultyFormData, status: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 font-medium"
+            >
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="INACTIVE">INACTIVE</option>
+              <option value="ON_LEAVE">ON_LEAVE</option>
+              <option value="TRANSFERRED">TRANSFERRED</option>
+              <option value="RETIRED">RETIRED</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowFacultyModal(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg text-xs shadow-xs"
+            >
+              {editingFaculty ? 'Save Changes' : 'Create Faculty Member'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal 4: View Faculty Advisees Drawer */}
+      <Modal
+        isOpen={!!viewingFacultyAdvisees}
+        onClose={() => setViewingFacultyAdvisees(null)}
+        title={`Assigned Advisees for ${viewingFacultyAdvisees?.name || 'Faculty Member'}`}
+      >
+        <div className="space-y-4">
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs flex justify-between items-center">
+            <div>
+              <span className="font-bold text-slate-800">{viewingFacultyAdvisees?.name}</span> ({viewingFacultyAdvisees?.employee_id})
+              <div className="text-[10px] text-slate-500">{viewingFacultyAdvisees?.email}</div>
+            </div>
+            <Badge variant="brand">{facultyAdviseesList.length} Advisees Linked</Badge>
+          </div>
+
+          <DataTable
+            columns={[
+              { header: 'Register No', cell: (row) => <span className="font-mono font-bold text-xs text-brand-600">{row.register_number}</span> },
+              { header: 'Student Name', cell: (row) => <span className="font-bold text-xs text-slate-800">{row.full_name}</span> },
+              { header: 'Batch / Sec', cell: (row) => <span className="text-xs text-slate-600">{row.academic_batch} ({row.section})</span> },
+              { header: 'Clearance Status', cell: (row) => <Badge variant={row.nodues_status === 'Approved' ? 'success' : 'warning'}>{row.nodues_status}</Badge> }
+            ]}
+            data={facultyAdviseesList}
+            emptyMessage="No advisees currently assigned to this faculty member."
+          />
+        </div>
       </Modal>
 
     </div>

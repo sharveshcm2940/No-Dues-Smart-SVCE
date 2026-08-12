@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "migrate:mysql": "node src/scripts/migrate_sqlite_to_mysql.js",
+    "backup:mysql": "node src/scripts/backup_database.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

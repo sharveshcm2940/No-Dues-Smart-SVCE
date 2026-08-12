@@ -62,6 +62,23 @@ async function notifyStudentAndFA({ registerNumber, requestNumber, title, studen
   }
 }
 
+/**
+ * Broadcasts an official system-wide notification directly to all user notification bell dropdowns.
+ */
+async function notifyAllUsers({ title, message, type = 'info' }) {
+  try {
+    await query(
+      `INSERT INTO notifications (target_user, title, message, type)
+       VALUES ('ALL', ?, ?, ?)`,
+      [title, message, type]
+    );
+    broadcastEvent('notification', { title, message, type }, 'ALL');
+  } catch (err) {
+    console.error('Error broadcasting system notification:', err);
+  }
+}
+
 module.exports = {
-  notifyStudentAndFA
+  notifyStudentAndFA,
+  notifyAllUsers
 };
