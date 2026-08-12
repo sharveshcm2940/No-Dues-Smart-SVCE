@@ -152,19 +152,20 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
       </div>
 
       {/* Official Certificate Paper Document (Printable Target) */}
-      <div 
-        id="printable-certificate"
-        ref={certificateRef}
-        className="bg-white rounded-lg border-4 border-slate-800 p-8 sm:p-12 shadow-md relative overflow-hidden text-slate-900 font-serif max-w-4xl mx-auto"
-      >
-        
-        {/* Subtle Watermark BG */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none select-none font-sans font-black text-8xl tracking-widest text-slate-900">
-          CLEARED
-        </div>
+      <div className="overflow-x-auto pb-2">
+        <div 
+          id="printable-certificate"
+          ref={certificateRef}
+          className="bg-white rounded-lg border-2 sm:border-4 border-slate-800 p-4 sm:p-12 shadow-md relative overflow-hidden text-slate-900 font-serif max-w-4xl mx-auto min-w-[320px]"
+        >
+          
+          {/* Subtle Watermark BG */}
+          <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none select-none font-sans font-black text-6xl sm:text-8xl tracking-widest text-slate-900">
+            CLEARED
+          </div>
 
-        {/* Outer ERP Border frame */}
-        <div className="border-2 border-slate-300 p-6 sm:p-8 relative z-10 bg-white/95">
+          {/* Outer ERP Border frame */}
+          <div className="border border-slate-300 p-4 sm:p-8 relative z-10 bg-white/95">
           
           {/* Header Seal & Title */}
           <div className="text-center pb-6 border-b border-slate-300">
@@ -211,7 +212,7 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
                 </div>
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>4. Faculty Advisor ({profile?.advisor_name || 'V.Praveen Kumar'})</span>
+                  <span>4. Faculty Advisor ({profile?.advisor_name || 'V Praveenkumar'})</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
@@ -242,7 +243,7 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
                 [ Digitally Signed ]
               </div>
               <div className="border-t border-slate-400 pt-1">
-                <p className="font-bold text-xs text-slate-800">{profile?.advisor_name || 'V.Praveen Kumar'}</p>
+                <p className="font-bold text-xs text-slate-800">{profile?.advisor_name || 'V Praveenkumar'}</p>
                 <p className="text-[11px] text-slate-500">Assigned Faculty Advisor</p>
               </div>
             </div>
@@ -264,6 +265,7 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
 
       </div>
 
+    </div>
     </div>
   );
 };

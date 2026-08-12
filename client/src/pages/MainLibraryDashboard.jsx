@@ -318,10 +318,10 @@ const MainLibraryDashboard = () => {
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
       <Header notifications={notifications} activeTab={activeTab} setActiveTab={setActiveTab} />
       
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
+      <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto">
         <Sidebar role="main_library_staff" activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <main className="flex-1 p-6 space-y-6 overflow-y-auto">
+        <main className="flex-1 p-3.5 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
 
           {/* TAB 1: EXECUTIVE OVERVIEW */}
           {activeTab === 'dashboard' && (

@@ -53,15 +53,18 @@ export const StudentDashboard = () => {
   const fetchDashboard = async () => {
     try {
       const res = await api.get('/student/dashboard');
-      if (res.data.success) {
+      if (res.data && res.data.success) {
         setDashboardData(res.data.data);
         if (res.data.data.profile) {
           setPhoneInput(res.data.data.profile.phone || '');
           setPhotoUrlInput(res.data.data.profile.photo_url || '');
         }
+      } else {
+        setDashboardData({ profile: null, metrics: { totalBorrowed: 0, activeBooks: 0, unpaidFines: 0 }, activeRequest: null, stages: [] });
       }
     } catch (err) {
       console.error('Error loading student dashboard:', err);
+      setDashboardData({ profile: null, metrics: { totalBorrowed: 0, activeBooks: 0, unpaidFines: 0 }, activeRequest: null, stages: [] });
     }
   };
 
@@ -207,24 +210,32 @@ export const StudentDashboard = () => {
     }
   };
 
-  if (loading || !dashboardData) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center text-slate-500 font-sans text-xs font-semibold">
-        Loading ERP Student Portal Environment...
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+          <span>Loading ERP Student Portal Environment...</span>
+        </div>
       </div>
     );
   }
 
-  const { profile, metrics, activeRequest, stages } = dashboardData;
+  const {
+    profile = null,
+    metrics = { totalBorrowed: 0, activeBooks: 0, unpaidFines: 0 },
+    activeRequest = null,
+    stages = []
+  } = dashboardData || {};
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
       <Header notifications={notifications} activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
+      <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto">
         <Sidebar role="student" activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <main className="flex-1 p-6 space-y-6 overflow-y-auto">
+        <main className="flex-1 p-3.5 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
           
           {/* TAB 1: OVERVIEW DASHBOARD */}
           {activeTab === 'dashboard' && (

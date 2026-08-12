@@ -104,18 +104,7 @@ exports.processDPCAction = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No-Dues Request record not found.' });
     }
 
-    if (action === 'Approve') {
-      const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
-      const mainLibStage = stages.find(s => s.department_name === 'Central Library');
-      const deptLibStage = stages.find(s => s.department_name === 'Department Library');
 
-      if (!mainLibStage || mainLibStage.status !== 'Approved' || !deptLibStage || deptLibStage.status !== 'Approved') {
-        return res.status(400).json({
-          success: false,
-          message: 'DPC approval is locked until BOTH Central Library and Department Library clearances are approved.'
-        });
-      }
-    }
 
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
       return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });

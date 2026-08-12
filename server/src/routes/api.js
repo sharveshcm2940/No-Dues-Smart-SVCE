@@ -12,6 +12,11 @@ const mainLibraryController = require('../controllers/mainLibraryController');
 
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
+const { handleSSEConnection } = require('../utils/sse');
+
+// Server-Sent Events (SSE) Real-Time Stream Endpoint
+router.get('/sse', handleSSEConnection);
+
 // Authentication Routes
 router.post('/auth/login', authController.login);
 router.get('/auth/me', authenticateToken, authController.getCurrentUser);
@@ -216,6 +221,27 @@ router.post(
   authenticateToken,
   authorizeRole(['faculty_advisor']),
   faController.bulkApproveAdvisees
+);
+
+router.get(
+  '/fa/students',
+  authenticateToken,
+  authorizeRole(['faculty_advisor']),
+  faController.getAssignedStudents
+);
+
+router.post(
+  '/fa/hall-ticket/update',
+  authenticateToken,
+  authorizeRole(['faculty_advisor']),
+  faController.updateHallTicketStatus
+);
+
+router.get(
+  '/fa/students/:regNo/detail',
+  authenticateToken,
+  authorizeRole(['faculty_advisor']),
+  faController.getStudentHallTicketDetail
 );
 
 // Head of Department Routes (Role: hod)

@@ -1,68 +1,81 @@
 # 🏛️ Sri Venkateswara College of Engineering (SVCE)
-## Department of Information Technology - No-Dues Clearance ERP
+## Department of Information Technology - No-Dues Clearance ERP & Hall Ticket Management System
 
-An enterprise-grade, human-crafted University ERP System for automating No-Dues clearance, book return tracking, faculty advisorship approvals, career pathway verifications, and digital certificate issuance at Sri Venkateswara College of Engineering (SVCE).
+An enterprise-grade, human-crafted University ERP System for automating No-Dues clearance, book return tracking, faculty advisorship approvals, career pathway verifications, manual Hall Ticket issuance, and digital certificate generation at Sri Venkateswara College of Engineering (SVCE).
+
+> **Officially Approved by Head of Department (HOD) - Department of Information Technology**
 
 ---
 
 ## 🌟 Key Features & Role Portals
 
-The system features **5 Dedicated Role Portals**, automatically detected upon login based on employee or register credentials:
+The system features **7 Institutional Role Portals**, automatically resolved upon login based on employee or register credentials:
 
 ### 🎓 1. Student Portal (`student`)
 - **Clearance Progress Tracker**: Live 6-stage visual pipeline tracker (Finance → Central Library → Department Library → Faculty Advisor → DPC → HOD).
-- **4th Year Career Pathway Details & Uploads**: Required for 4th Year (IV Year) students alone when submitting No-Dues:
+- **4th Year Career Pathway Details & Uploads**: Required for 4th Year (IV Year) students:
   - **Option A: Placements**: Offer letter, job designation, CTC package, company details.
-  - **Option B: Higher Studies**: College details, degree program, application form, GRE/TOEFL scorecard, contact info.
-  - **Option C: Competitive Exams**: Exam details, GATE/CAT/UPSC scorecard, admit card, registration details.
-  - **Option E: Entrepreneurship**: Startup details, business ideas, business description, pitch deck.
-- **Academic Profile Desk**: Details on Programme, Department, Year, Semester, Section, and assigned Faculty Advisor.
-- **Official Digital Certificate Archive**: Instant generation & download of official SVCE digital clearance certificate (`CERT-SVCE-IT-2026-XXXX`) complete with unique Certificate Number, verification QR code, and signatures. Also displays previous issued term certificates.
+  - **Option B: Higher Studies**: Target university details, degree program, application form, scorecard, and optional supporting letter.
+  - **Option C: Competitive Exams**: Exam details, registration number, admit card/scorecard, and optional supporting letter.
+  - **Option E: Entrepreneurship**: Startup name, business idea, business description, and pitch deck.
+- **Academic Profile Desk**: Details on Programme, Department, Year, Semester, Section, and assigned Faculty Advisor (`V Praveenkumar`).
+- **Official Digital Certificate Archive**: Instant generation & download of official SVCE digital clearance certificate (`CERT-SVCE-IT-2026-XXXX`) complete with Certificate Number, verification QR code, and signatures.
 - **Support & Complaints Desk**: Raise inquiries or submit attachments to department staff.
 
-### 📚 2. Department Library Portal (`library_staff`)
-- **Strict Verification Rule**: Automated zero-dues enforcement (**0 Active Borrowed Books & ₹0 Unpaid Fines** required before clearance).
-- **Action Drawer Direct Fine Imposition**: Impose library fines in Rupees (₹) with custom reasons directly within the student review drawer (`+ Add Fine`).
-- **Editable Metric Statistics**: Edit stat card totals (**Total Books Catalog**, **Books Available**, **Books Borrowed**, **Pending Returns**) live from the header banner or stat cards, with a **"Reset to Auto"** option.
+### 👨‍🏫 2. Faculty Advisor (FA) Desk & Hall Ticket Management (`faculty_advisor`)
+- **Assigned Advisee Roster**: Displays only students assigned to the logged-in Faculty Advisor (`advisor_emp_id`).
+- **Manual Hall Ticket Issuance & Revocation**:
+  - Summary metrics: Total Advisees, Hall Tickets Issued (✅), Not Issued (⏳).
+  - Manual FA Action: Hall Tickets are strictly **FA-controlled** and never auto-issued upon No-Dues completion.
+  - Confirmation Modal: Prompt confirming issuance or revocation before updating status.
+  - Audit Trail: Immutable logging in `hall_ticket_audit_logs` storing status changes, FA employee ID, FA name, timestamp, and remarks.
+- **Student Profile & Audit History Modal**: Inspect student profile, No-Dues 6-stage breakdown, and complete Hall Ticket audit history.
+- **Stage 4 Clearance Desk**: Review advisee conduct, attendance records, and grant/reject Stage 4 clearance with mandatory remarks.
+- **Bulk Approve All Advisees**: One-click bulk approval for all pending advisee clearance requests.
+
+### 💼 3. Department Placement Coordinator (DPC) Portal (`dpc`)
+- **Option Segregation Tabs**: Interactive filter tabs for 4th-Year career pathways:
+  - **Option A (Placements)**: Company name, designation, CTC, offer letter proof.
+  - **Option B (Higher Studies)**: Target university, degree, application form proof, scorecard, supporting letter.
+  - **Option C (Competitive Exams)**: Exam name, registration details, score/percentile, admit card, supporting letter.
+  - **Option E (Entrepreneurship)**: Startup name, business idea, details, pitch deck.
+- **Career Credentials Audit Modal**: Inspect uploaded credentials with inline data URL viewers and clearance fallback cards.
+- **Stage 5 Placement Clearance Desk**: Verify credentials and grant Stage 5 placement clearance.
+
+### 📚 4. Department Library Portal (`library_staff`)
+- **Zero-Dues Rule Enforcement**: Automated zero-dues enforcement (0 Active Borrowed Books & ₹0 Unpaid Fines required before clearance).
+- **Direct Fine Imposition**: Impose library fines in Rupees (₹) with custom reasons directly within the review drawer.
+- **Editable Stat Cards**: Live stat card totals (Books Catalog, Available, Borrowed, Pending Returns) with "Reset to Auto" option.
 - **Bulk Approve All Eligible Dues**: One-click bulk approval for all pending students with zero active books and zero unpaid fines.
-- **Book Inventory Management**: Searchable catalog with copy count tracking and edition details.
-- **Student Borrow Directory**: Issue, return, and fine management for all IT department students.
 
-### 👨‍🏫 3. Faculty Advisor (FA) Desk (`faculty_advisor`)
-- **Assigned Advisee Roster**: Complete roster of assigned advisees with full student profile modals.
-- **Bulk Approve All Advisees**: One-click bulk approval for all pending advisee No-Dues clearance requests.
-- **Stage 4 Clearance Approval Desk**: Review student conduct, attendance records, and grant/reject/hold Stage 4 clearance with mandatory remarks.
+### 🏛️ 5. Central Library Portal (`main_library_staff`)
+- **Institutional Library Verification**: Verify campus central library borrowing records, unreturned books, and clearance stage 2.
 
-### 💼 4. Department Placement Coordinator (DPC) Portal (`dpc`)
-- **Stage 5 Placement & Career Clearance Desk**: Dedicated portal for Department Placement Coordinator to verify 4th Year student career credentials (Options A, B, C, E).
-- **Career Credentials Audit Modal**: Inspect uploaded offer letters, GRE scorecards, GATE admit cards, and startup pitch decks.
-- **Bulk Approve All Placement Requests**: One-click bulk approval for all pending Stage 5 placement clearance requests.
+### 💳 6. Finance Section Portal (`finance`)
+- **Stage 1 Tuition & Institutional Fee Clearance**: Verify student fee dues, hostel dues, bus fees, and grant Stage 1 clearance.
 
-### 👑 5. HOD Executive Dashboard (`hod`)
+### 👑 7. HOD Executive Dashboard (`hod`)
 - **Department Master Metrics**: Department-wide statistics on total applications, cleared certificates, pending approvals, and active dues.
-- **Department Student Roster**: View all active IT department students, sections, batches, assigned Faculty Advisors, and current clearance stages.
-- **Bulk Grant Final HOD Sign-Off & Issue Certificates**: One-click bulk final sign-off issuing official digital certificates for all pending passing students.
+- **Stage 6 Final Approval & Certificate Issuance**: Bulk final HOD sign-off issuing official digital certificates for passing students.
+- **Database Administration & Batch Management**: CSV student import, batch-wise student wipe, and complete system reset.
 - **Announcements Desk**: Publish department-wide No-Dues notices to students and faculty.
 
 ---
 
-## 🔔 Dual Notification System & Real-Time Live Polling
+## 📡 Server-Sent Events (SSE) & Dual Notification System
 
-- **Dual Notification Dispatch**: Whenever a student's No-Dues application is **Put On Hold**, **REJECTED**, or **Marked with a Fine** at ANY stage:
-  - Real-time notification is sent to the **Student** (`register_number`).
-  - Real-time urgent alert is sent to their **respective Faculty Advisor** (`advisor_emp_id`, `advisor_email`, `advisor_name`).
-- **5-Second Real-Time Live Polling**: All 5 dashboard portals automatically poll for notifications every 5 seconds, updating the red notification bell icon live without requiring manual page refresh.
+- **Server-Sent Events Stream (`/api/sse`)**: Real-time HTTP event stream pushing live updates to connected browsers without manual polling.
+- **Dual Notification Dispatch**: Whenever a student's No-Dues application is Put On Hold, Rejected, or Marked with Dues:
+  - Real-time notification sent to the **Student** (`register_number`).
+  - Real-time alert dispatched to their **respective Faculty Advisor** (`advisor_emp_id`, `V Praveenkumar`).
 
 ---
 
-## 🎨 SVCE Brand Theme & Aesthetic
+## 📱 Mobile View & Responsive Dual Navigation
 
-- **Official Logo**: Official Sri Venkateswara College of Engineering Logo (`svce_logo.png`).
-- **Color Palette**:
-  - **SVCE Royal Blue**: `#1d4ed8`
-  - **Laurel Leaf Orange**: `#f97316`
-  - **Slate Neutral**: `#f8fafc` & `#0f172a`
-- **Typography & Initial Badges**: Clean, human-crafted ERP layout with initial letter badges.
+- **Horizontal Scroll Pill Strip (`< md`)**: On small screens, a sticky top horizontal pill bar enables fast tab switching.
+- **Slide-Over Mobile Drawer**: Expandable slide-out navigation menu overlay with smooth backdrop blur.
+- **Mobile Optimized Dialogs & Certificate**: Touch-friendly modals (`max-h-[85vh] overflow-y-auto`) and scrollable digital certificate viewer (`overflow-x-auto`).
 
 ---
 
@@ -74,10 +87,9 @@ The system features **5 Dedicated Role Portals**, automatically detected upon lo
 | **HOD** | Dr V Vidhya | `EMP-HOD-IT-01` | `vidhya.v@svce.ac.in` | All IT Batches & Final Sign-Off |
 | **Placement Coordinator (DPC)** | Dr. R. Placement Coordinator | `EMP-DPC-IT-01` | `dpc.it@svce.ac.in` | 4th Year Career Verification |
 | **Library In-Charge** | Sivakumar E | `EMP-LIB-IT-01` | `sivakumar.e@svce.ac.in` | Department Library Desk |
-| **Faculty Advisor** | V.Ranjith | `EMP-FA-IT-03` | `ranjith.v@svce.ac.in` | 3rd Year IT-A Advisees |
-| **Faculty Advisor** | S.Kavishree | `EMP-FA-IT-04` | `kavishree.s@svce.ac.in` | 3rd Year IT-A Advisees |
+| **Faculty Advisor** | V Praveenkumar | `EMP-FA-IT-01` | `praveenkumar.v@svce.ac.in` | Hall Ticket & Advisee Roster |
 | **Faculty Advisor** | N.Selvaganesh | `EMP-FA-IT-02` | `selvaganesh.n@svce.ac.in` | 3rd Year IT-B Advisees |
-| **Faculty Advisor** | V.Praveen Kumar | `EMP-FA-IT-01` | `praveenkumar.v@svce.ac.in` | 3rd Year / 4th Year Advisees |
+| **Faculty Advisor** | V.Ranjith | `EMP-FA-IT-03` | `ranjith.v@svce.ac.in` | 3rd Year IT-A Advisees |
 
 ### 4th Year B.Tech IT Student Logins (Career Pathway Demo)
 | Student Name | Register No / ID | Section | Selected Career Pathway |
@@ -87,91 +99,30 @@ The system features **5 Dedicated Role Portals**, automatically detected upon lo
 | **Chandra Mouli R** | `IT2024003` | Sec-B | Option C: Competitive Exams (GATE 2026 CS/IT) |
 | **Dinesh Karthik** | `IT2024004` | Sec-B | Option E: Entrepreneurship (Nexus AI Solutions) |
 
-### 3rd Year B.Tech IT Student Logins (98 Students)
-Log in using **Register Number** (`IT2025001` to `IT2025098`) and password `password123`.
-
 ---
 
-## 📁 Project Structure
+## 🛠️ Installation & Server Deployment
 
-```
-No dues/
-├── client/                     # React 18 + Vite + Tailwind CSS Frontend
-│   ├── public/                 # Static Assets (svce_logo.png)
-│   ├── src/
-│   │   ├── components/         # Header, Sidebar, Modal, ApprovalDialog, Logo & Tables
-│   │   ├── pages/              # Role Dashboards (Student, Library, FA, DPC, HOD)
-│   │   ├── services/           # Axios API Client
-│   │   ├── App.jsx             # Main Routing & Auth Context
-│   │   └── main.jsx
-│   ├── tailwind.config.js      # SVCE Theme Palette
-│   └── vite.config.js          # Vite Server & Proxy Config
-│
-├── server/                     # Node.js + Express Backend
-│   ├── database.sqlite         # SQLite Local Database
-│   ├── src/
-│   │   ├── config/             # DB Connection Wrapper
-│   │   ├── controllers/        # Auth, Student, Library, FA, DPC, HOD Controllers
-│   │   ├── middleware/         # JWT Auth & Role Access Control
-│   │   ├── routes/             # RESTful API Endpoints
-│   │   ├── seed/               # Database Schema & Seed Data
-│   │   ├── utils/              # Dual Notification Notifier Utility
-│   │   └── server.js           # Express App Entry Point
-│   ├── Dockerfile              # Backend Container Configuration
-│   └── package.json
-├── docker-compose.yml          # Full-Stack Container Orchestration
-└── README.md
-```
-
----
-
-## 🛠️ Installation & Getting Started
-
-### Prerequisites
-- Node.js (v18 or higher)
-- npm (v9 or higher)
-
-### 1. Server Setup
-```bash
-cd server
-npm install
-npm start
-```
-The server will initialize `database.sqlite`, execute schema seeds, and start on `http://localhost:5000`.
-
-### 2. Client Setup
-```bash
-cd client
-npm install
-npm run dev
-```
-The client dev server will start on `http://localhost:3000`.
-
----
-
-## 🐳 Docker Containerized Setup (Recommended)
-
-Run the entire stack (Node Express Backend + React Nginx Frontend) with a single command:
+### Unified Production Server (Single-Command Host)
+Express hosts both the production React bundle (`client/dist`) and the API backend on a single port (`5000`):
 
 ```bash
-docker-compose up --build -d
-```
-
-- **Frontend Application**: `http://localhost:3000` (Served by Nginx)
-- **Backend API**: `http://localhost:5000/api`
-- **Stop Containers**: `docker-compose down`
-
----
-
-## 🧪 Production Build & Verification
-
-To build the client application for production manually:
-```bash
+# 1. Build Client Assets
 cd client
 npm run build
+
+# 2. Start Unified Server
+cd ../server
+npm start
+```
+
+### LAN Access (Other Laptops on Same Wi-Fi/Network)
+Open browser on any laptop connected to the same network and navigate to:
+```text
+http://<HOST-LAPTOP-IP>:5000
 ```
 
 ---
 
-## 📜 License
-Developed for Sri Venkateswara College of Engineering (SVCE), Department of Information Technology.
+## 📜 Official HOD Approval
+**IT Dept HOD Approved Release** - Verified and approved by **Dr V Vidhya**, Head of Department, Department of Information Technology, Sri Venkateswara College of Engineering.

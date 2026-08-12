@@ -191,6 +191,11 @@ exports.bulkApproveAdvisees = async (req, res) => {
       JOIN students s ON nr.register_number = s.register_number
       WHERE ns.department_name = 'Faculty Advisor' AND ns.status = 'Pending'
         AND (s.advisor_emp_id = ? OR s.advisor_name = ?)
+        AND (
+          SELECT status 
+          FROM nodues_stages fin_s 
+          WHERE fin_s.request_id = nr.id AND fin_s.department_name = 'Finance'
+        ) = 'Approved'
     `, [empId, faName]);
 
     let count = 0;
@@ -213,5 +218,182 @@ exports.bulkApproveAdvisees = async (req, res) => {
   } catch (error) {
     console.error('Bulk Approve FA Error:', error);
     return res.status(500).json({ success: false, message: 'Error executing bulk Faculty Advisor approval.' });
+  }
+};
+
+// Get all students assigned under logged-in FA with Hall Ticket status
+exports.getAssignedStudents = async (req, res) => {
+  try {
+    const empId = req.user.username;
+    const advisor = await getOne('SELECT * FROM faculty_advisors WHERE employee_id = ?', [empId]);
+
+    const students = await query(
+      `SELECT s.*,
+        COALESCE(s.hall_ticket_status, 'Not Issued') as hall_ticket_status,
+        s.hall_ticket_issued_by,
+        s.hall_ticket_issued_by_emp_id,
+        s.hall_ticket_issued_at,
+        s.hall_ticket_remarks,
+        (SELECT overall_status FROM nodues_requests nr WHERE nr.register_number = s.register_number ORDER BY id DESC LIMIT 1) as nodues_status,
+        (SELECT current_stage FROM nodues_requests nr WHERE nr.register_number = s.register_number ORDER BY id DESC LIMIT 1) as current_stage,
+        (SELECT request_number FROM nodues_requests nr WHERE nr.register_number = s.register_number ORDER BY id DESC LIMIT 1) as request_number,
+        (SELECT id FROM nodues_requests nr WHERE nr.register_number = s.register_number ORDER BY id DESC LIMIT 1) as request_id
+       FROM students s
+       WHERE s.advisor_emp_id = ? OR s.advisor_name = ?
+       ORDER BY 
+         CASE s.year 
+           WHEN 'IV Year' THEN 4 
+           WHEN 'III Year' THEN 3 
+           WHEN 'II Year' THEN 2 
+           WHEN 'I Year' THEN 1 
+           ELSE 0 
+         END DESC, 
+         s.full_name ASC`,
+      [empId, advisor ? advisor.full_name : '']
+    );
+
+    const totalStudents = students.length;
+    const issuedCount = students.filter(s => s.hall_ticket_status === 'Issued').length;
+    const notIssuedCount = totalStudents - issuedCount;
+
+    return res.json({
+      success: true,
+      data: {
+        advisor,
+        stats: {
+          totalStudents,
+          issuedCount,
+          notIssuedCount
+        },
+        students
+      }
+    });
+
+  } catch (error) {
+    console.error('Get Assigned Students Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error loading assigned students roster.' });
+  }
+};
+
+// Update Student Hall Ticket Issued Status (FA Only)
+exports.updateHallTicketStatus = async (req, res) => {
+  try {
+    const empId = req.user.username;
+    const { register_number, hall_ticket_status, remarks } = req.body;
+
+    if (!register_number || !hall_ticket_status) {
+      return res.status(400).json({ success: false, message: 'Register Number and Hall Ticket Status are required.' });
+    }
+
+    const advisor = await getOne('SELECT * FROM faculty_advisors WHERE employee_id = ?', [empId]);
+    if (!advisor) {
+      return res.status(403).json({ success: false, message: 'Unauthorized: Logged in user is not a Faculty Advisor.' });
+    }
+
+    // Backend Role-Based Access Control: Verify student belongs to logged in FA
+    const student = await getOne(
+      'SELECT * FROM students WHERE register_number = ? AND (advisor_emp_id = ? OR advisor_name = ?)',
+      [register_number, empId, advisor.full_name]
+    );
+
+    if (!student) {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized: This student is not assigned under your Faculty Advisor roster.'
+      });
+    }
+
+    const prevStatus = student.hall_ticket_status || 'Not Issued';
+
+    // Update student hall ticket info
+    await query(
+      `UPDATE students 
+       SET hall_ticket_status = ?,
+           hall_ticket_issued_by = ?,
+           hall_ticket_issued_by_emp_id = ?,
+           hall_ticket_issued_at = datetime('now'),
+           hall_ticket_remarks = ?
+       WHERE register_number = ?`,
+      [hall_ticket_status, advisor.full_name, empId, remarks || null, register_number]
+    );
+
+    // Record audit entry in hall_ticket_audit_logs
+    await query(
+      `INSERT INTO hall_ticket_audit_logs (
+        student_register_number, student_name, previous_status, new_status, updated_by_name, updated_by_emp_id, remarks, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      [register_number, student.full_name, prevStatus, hall_ticket_status, advisor.full_name, empId, remarks || null]
+    );
+
+    // Send notification to student
+    await query(
+      `INSERT INTO notifications (target_user, title, message, type)
+       VALUES (?, ?, ?, ?)`,
+      [
+        register_number,
+        'Hall Ticket Status Updated',
+        `Your Hall Ticket status has been marked as: ${hall_ticket_status} by Faculty Advisor ${advisor.full_name}.`,
+        hall_ticket_status === 'Issued' ? 'success' : 'warning'
+      ]
+    );
+
+    return res.json({
+      success: true,
+      message: `Hall Ticket status for ${student.full_name} updated to '${hall_ticket_status}' successfully.`
+    });
+
+  } catch (error) {
+    console.error('Update Hall Ticket Status Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error updating Hall Ticket status.' });
+  }
+};
+
+// Get Detailed Student Profile & Hall Ticket Audit History
+exports.getStudentHallTicketDetail = async (req, res) => {
+  try {
+    const { regNo } = req.params;
+
+    const student = await getOne('SELECT * FROM students WHERE register_number = ?', [regNo]);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student record not found.' });
+    }
+
+    // No dues request & stages
+    const noduesRequest = await getOne('SELECT * FROM nodues_requests WHERE register_number = ? ORDER BY id DESC LIMIT 1', [regNo]);
+    let stages = [];
+    let auditLogs = [];
+
+    if (noduesRequest) {
+      stages = await query('SELECT * FROM nodues_stages WHERE request_id = ? ORDER BY stage_order ASC', [noduesRequest.id]);
+      auditLogs = await query('SELECT * FROM nodues_audit_logs WHERE request_id = ? ORDER BY timestamp DESC', [noduesRequest.id]);
+    }
+
+    // Hall Ticket audit history
+    const htAuditLogs = await query(
+      'SELECT * FROM hall_ticket_audit_logs WHERE student_register_number = ? ORDER BY timestamp DESC',
+      [regNo]
+    );
+
+    // Library borrow records
+    const borrowRecords = await query(
+      'SELECT * FROM borrow_records WHERE register_number = ? ORDER BY issue_date DESC',
+      [regNo]
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        student,
+        noduesRequest,
+        stages,
+        auditLogs,
+        htAuditLogs,
+        borrowRecords
+      }
+    });
+
+  } catch (error) {
+    console.error('Get Student Hall Ticket Detail Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching student details.' });
   }
 };

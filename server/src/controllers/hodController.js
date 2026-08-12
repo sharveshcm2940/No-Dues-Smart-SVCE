@@ -45,6 +45,11 @@ exports.getHODDashboard = async (req, res) => {
         (SELECT COUNT(*) FROM borrow_records br WHERE br.register_number = nr.register_number AND br.status = 'Issued') as active_books,
         (SELECT COALESCE(SUM(fine_amount), 0) FROM borrow_records br WHERE br.register_number = nr.register_number AND br.fine_status = 'Unpaid') as fine_unpaid
       FROM nodues_requests nr
+      WHERE (
+        SELECT status 
+        FROM nodues_stages fin_s 
+        WHERE fin_s.request_id = nr.id AND fin_s.department_name = 'Finance'
+      ) = 'Approved'
       ORDER BY 
         CASE nr.year 
           WHEN 'IV Year' THEN 4 
@@ -228,6 +233,11 @@ exports.bulkApproveHOD = async (req, res) => {
       FROM nodues_stages ns
       JOIN nodues_requests nr ON ns.request_id = nr.id
       WHERE ns.department_name = 'HOD' AND ns.status = 'Pending'
+        AND (
+          SELECT status 
+          FROM nodues_stages fa_s 
+          WHERE fa_s.request_id = nr.id AND fa_s.department_name = 'Faculty Advisor'
+        ) = 'Approved'
     `);
 
     let count = 0;

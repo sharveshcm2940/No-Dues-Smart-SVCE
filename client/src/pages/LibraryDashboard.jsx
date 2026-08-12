@@ -135,11 +135,14 @@ export const LibraryDashboard = () => {
   const fetchDashboard = async () => {
     try {
       const res = await api.get('/library/dashboard');
-      if (res.data.success) {
+      if (res.data && res.data.success) {
         setDashboardData(res.data.data);
+      } else {
+        setDashboardData({ staff: null, stats: { totalBooks: 0, borrowedBooks: 0, activeRequests: 0, totalFineCollected: 0 }, recentRequests: [] });
       }
     } catch (err) {
       console.error('Error fetching library dashboard:', err);
+      setDashboardData({ staff: null, stats: { totalBooks: 0, borrowedBooks: 0, activeRequests: 0, totalFineCollected: 0 }, recentRequests: [] });
     }
   };
 
@@ -352,24 +355,31 @@ export const LibraryDashboard = () => {
     });
   };
 
-  if (loading || !dashboardData) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center text-slate-500 font-sans text-xs font-semibold">
-        Loading ERP Department Library Staff Desk...
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+          <span>Loading ERP Department Library Staff Desk...</span>
+        </div>
       </div>
     );
   }
 
-  const { staff, stats, recentRequests } = dashboardData;
+  const {
+    staff = null,
+    stats = { totalBooks: 0, borrowedBooks: 0, activeRequests: 0, totalFineCollected: 0 },
+    recentRequests = []
+  } = dashboardData || {};
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
       <Header notifications={notifications} activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
+      <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto">
         <Sidebar role="library_staff" activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <main className="flex-1 p-6 space-y-6 overflow-y-auto">
+        <main className="flex-1 p-3.5 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
 
           {/* TAB 1: OVERVIEW DASHBOARD */}
           {activeTab === 'dashboard' && (

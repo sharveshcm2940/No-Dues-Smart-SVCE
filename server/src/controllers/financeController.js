@@ -10,11 +10,13 @@ exports.getFinanceDashboard = async (req, res) => {
     // Finance Profile
     const finance = await getOne('SELECT * FROM finance_profile WHERE employee_id = ?', [empId]);
 
-    // All active requests with student details
+    // All active requests with student details (visible to Finance only after 3 initial departments approve)
     const allRequests = await query(`
       SELECT nr.*, s.section, s.batch, s.programme, s.email as student_email, s.phone as student_phone
       FROM nodues_requests nr
+      JOIN nodues_stages ns ON nr.id = ns.request_id AND ns.department_name = 'Finance'
       JOIN students s ON nr.register_number = s.register_number
+      WHERE ns.status != 'Locked'
       ORDER BY 
         CASE s.year 
           WHEN 'IV Year' THEN 4 
@@ -26,7 +28,7 @@ exports.getFinanceDashboard = async (req, res) => {
         s.full_name ASC
     `);
 
-    // Pending Finance clearances (Stage 1)
+    // Pending Finance clearances (visible ONLY when DPC, Central Lib, and Dept Lib are ALL Approved)
     const pendingRequests = await query(`
       SELECT 
         nr.*,
@@ -37,6 +39,13 @@ exports.getFinanceDashboard = async (req, res) => {
       JOIN nodues_stages ns ON nr.id = ns.request_id AND ns.department_name = 'Finance'
       JOIN students s ON nr.register_number = s.register_number
       WHERE ns.status = 'Pending'
+        AND (
+          SELECT COUNT(*) 
+          FROM nodues_stages init_s 
+          WHERE init_s.request_id = nr.id 
+            AND init_s.department_name IN ('DPC', 'Central Library', 'Department Library') 
+            AND init_s.status = 'Approved'
+        ) = 3
       ORDER BY 
         CASE s.year 
           WHEN 'IV Year' THEN 4 
@@ -96,11 +105,17 @@ exports.processFinanceAction = async (req, res) => {
     if (action === 'Approve') {
       const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
       const dpcStage = stages.find(s => s.department_name === 'DPC');
+      const mainLibStage = stages.find(s => s.department_name === 'Central Library');
+      const deptLibStage = stages.find(s => s.department_name === 'Department Library');
 
-      if (!dpcStage || dpcStage.status !== 'Approved') {
+      const allInitApproved = (dpcStage && dpcStage.status === 'Approved') &&
+                              (mainLibStage && mainLibStage.status === 'Approved') &&
+                              (deptLibStage && deptLibStage.status === 'Approved');
+
+      if (!allInitApproved) {
         return res.status(400).json({
           success: false,
-          message: 'Finance clearance is locked until DPC clearance is approved.'
+          message: 'Finance clearance is locked until DPC, Central Library, and Department Library have ALL approved.'
         });
       }
     }
@@ -180,6 +195,13 @@ exports.bulkApproveFinance = async (req, res) => {
       FROM nodues_stages ns
       JOIN nodues_requests nr ON ns.request_id = nr.id
       WHERE ns.department_name = 'Finance' AND ns.status = 'Pending'
+        AND (
+          SELECT COUNT(*) 
+          FROM nodues_stages init_s 
+          WHERE init_s.request_id = nr.id 
+            AND init_s.department_name IN ('DPC', 'Central Library', 'Department Library') 
+            AND init_s.status = 'Approved'
+        ) = 3
     `);
 
     let count = 0;

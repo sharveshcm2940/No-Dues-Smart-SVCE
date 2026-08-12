@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import Modal from '../common/Modal';
+import ResubmitModal from './ResubmitModal';
 import { useAlert } from '../../context/AlertContext';
 import { formatDateTime } from '../../utils/dateUtils';
 import api from '../../services/api';
@@ -136,6 +137,8 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
   const [higherAppFormName, setHigherAppFormName] = useState('');
   const [higherScorecardUrl, setHigherScorecardUrl] = useState('');
   const [higherScorecardName, setHigherScorecardName] = useState('');
+  const [higherLetterUrl, setHigherLetterUrl] = useState('');
+  const [higherLetterName, setHigherLetterName] = useState('');
   const [higherContact, setHigherContact] = useState('');
 
   // Option C - Competitive Exams
@@ -143,6 +146,8 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
   const [examRegNo, setExamRegNo] = useState('');
   const [admitCardUrl, setAdmitCardUrl] = useState('');
   const [admitCardName, setAdmitCardName] = useState('');
+  const [examLetterUrl, setExamLetterUrl] = useState('');
+  const [examLetterName, setExamLetterName] = useState('');
   const [examDetails, setExamDetails] = useState('');
 
   // Option E - Entrepreneurship
@@ -195,11 +200,13 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
         higher_degree: isFourthYear ? higherDegree : null,
         higher_app_form_url: isFourthYear ? higherAppFormUrl : null,
         higher_scorecard_url: isFourthYear ? higherScorecardUrl : null,
+        higher_letter_url: isFourthYear ? higherLetterUrl : null,
         higher_contact: isFourthYear ? higherContact : null,
         // Option C
         exam_name: isFourthYear ? examName : null,
         exam_reg_no: isFourthYear ? examRegNo : null,
         admit_card_url: isFourthYear ? admitCardUrl : null,
+        exam_letter_url: isFourthYear ? examLetterUrl : null,
         exam_details: isFourthYear ? examDetails : null,
         // Option E
         startup_name: isFourthYear ? startupName : null,
@@ -386,35 +393,33 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
             <div className="bg-white p-3.5 rounded-lg border border-purple-200 space-y-3 mt-2">
               <h5 className="font-bold text-purple-900 flex items-center gap-1.5">
                 <GraduationCap className="w-4 h-4 text-purple-600" />
-                <span>Option B: Higher Studies Admission Details & Document Upload</span>
+                <span>Option B: Higher Studies Admission Details & Supporting Documents</span>
               </h5>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Target University / College Details *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Target University / College Details</label>
                   <input
                     type="text"
                     value={higherCollegeName}
                     onChange={(e) => setHigherCollegeName(e.target.value)}
                     placeholder="e.g. Carnegie Mellon University / IIT Madras"
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                    required
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Degree & Program *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Degree & Program</label>
                   <input
                     type="text"
                     value={higherDegree}
                     onChange={(e) => setHigherDegree(e.target.value)}
                     placeholder="e.g. MS in Computer Science"
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                    required
                   />
                 </div>
                 
                 {/* FILE UPLOAD: APPLICATION FORM */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Upload Application Form *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Upload Application Form</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="file"
@@ -450,7 +455,7 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
 
                 {/* FILE UPLOAD: SCORECARD */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Upload GRE/GATE/TOEFL Scorecard *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Upload GRE/GATE/TOEFL Scorecard</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="file"
@@ -484,15 +489,50 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
                   </div>
                 </div>
 
+                {/* FILE UPLOAD: ADMISSION / SUPPORTING LETTER */}
                 <div className="sm:col-span-2">
-                  <label className="block font-semibold text-slate-700 mb-1">Contact / Admission Reference Info *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Upload Admission / Offer Letter / Supporting Document</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                      onChange={(e) => handleFileUpload(e, setHigherLetterUrl, setHigherLetterName)}
+                      className="hidden"
+                      id="higher-letter-file"
+                    />
+                    <label
+                      htmlFor="higher-letter-file"
+                      className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-semibold border border-purple-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Upload Letter / Proof...</span>
+                    </label>
+                    {higherLetterName ? (
+                      <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
+                        <FileText className="w-3.5 h-3.5 text-purple-600" />
+                        <span className="truncate max-w-[180px]">{higherLetterName}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setHigherLetterUrl(''); setHigherLetterName(''); }}
+                          className="text-red-500 hover:text-red-700 ml-1"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 italic">No letter selected</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-slate-700 mb-1">Contact / Admission Reference Info</label>
                   <input
                     type="text"
                     value={higherContact}
                     onChange={(e) => setHigherContact(e.target.value)}
                     placeholder="e.g. App ID: CMU-2026-9901 | Contact: admissions@cmu.edu"
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                    required
                   />
                 </div>
               </div>
@@ -504,35 +544,33 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
             <div className="bg-white p-3.5 rounded-lg border border-amber-200 space-y-3 mt-2">
               <h5 className="font-bold text-amber-900 flex items-center gap-1.5">
                 <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-                <span>Option C: Competitive Exam Details & Admit Card Upload</span>
+                <span>Option C: Competitive Exam Details & Documents</span>
               </h5>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Exam Name *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Exam Name</label>
                   <input
                     type="text"
                     value={examName}
                     onChange={(e) => setExamName(e.target.value)}
                     placeholder="e.g. GATE 2026 CS/IT / CAT 2025 / UPSC"
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                    required
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Registration / Roll Details *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Registration / Roll Details</label>
                   <input
                     type="text"
                     value={examRegNo}
                     onChange={(e) => setExamRegNo(e.target.value)}
                     placeholder="e.g. CS26S33012901"
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                    required
                   />
                 </div>
                 
-                {/* FILE UPLOAD: ADMIT CARD */}
+                {/* FILE UPLOAD: ADMIT CARD / SCORECARD */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Upload Admit Card / Scorecard Document *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Upload Admit Card / Scorecard Document</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="file"
@@ -546,7 +584,7 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
                       className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold border border-amber-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
                     >
                       <Upload className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Upload Admit Card...</span>
+                      <span>Upload Scorecard / Admit Card...</span>
                     </label>
                     {admitCardName ? (
                       <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
@@ -566,15 +604,50 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
                   </div>
                 </div>
 
+                {/* FILE UPLOAD: SUPPORTING LETTER */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Exam Score / Percentile *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Upload Supporting Letter / Proof</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                      onChange={(e) => handleFileUpload(e, setExamLetterUrl, setExamLetterName)}
+                      className="hidden"
+                      id="exam-letter-file"
+                    />
+                    <label
+                      htmlFor="exam-letter-file"
+                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold border border-amber-200 rounded cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Upload Letter / Proof...</span>
+                    </label>
+                    {examLetterName ? (
+                      <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border text-[11px] font-mono text-slate-800">
+                        <FileText className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="truncate max-w-[130px]">{examLetterName}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setExamLetterUrl(''); setExamLetterName(''); }}
+                          className="text-red-500 hover:text-red-700 ml-1"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 italic">No file</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-slate-700 mb-1">Exam Score / Percentile / Remarks</label>
                   <input
                     type="text"
                     value={examDetails}
                     onChange={(e) => setExamDetails(e.target.value)}
                     placeholder="e.g. Scored 99.4 percentile in GATE CS"
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded font-medium"
-                    required
                   />
                 </div>
               </div>
@@ -1004,100 +1077,18 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
       </Modal>
 
       {/* Targeted Re-submission Modal */}
-      <Modal
+      <ResubmitModal
         isOpen={showResubmitModal}
         onClose={() => setShowResubmitModal(false)}
-        title={`Re-submit Application directly to ${rejectedStage?.department_name}`}
-      >
-        <form onSubmit={handleResubmitSubmit} className="space-y-4 text-xs">
-          <div className="bg-amber-50 p-3.5 rounded-lg border border-amber-200 text-amber-900 space-y-1">
-            <p className="font-bold flex items-center gap-1.5">
-              <AlertTriangle className="w-4 h-4 text-amber-600" />
-              <span>Targeted Re-submission Routing</span>
-            </p>
-            <p className="text-[11px]">
-              This re-submitted request will go <strong>only to {rejectedStage?.department_name}</strong>. All previously approved department clearances will remain valid.
-            </p>
-          </div>
-
-          <div>
-            <label className="block font-bold text-slate-800 mb-1">
-              Explanation & Action Taken (Mandatory Comment) *
-            </label>
-            <textarea
-              rows={4}
-              value={resubmitComment}
-              onChange={(e) => setResubmitComment(e.target.value)}
-              placeholder="Explain what issue has been resolved, why you are submitting again, or provide requested details..."
-              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-medium text-slate-800 text-xs focus:ring-2 focus:ring-brand-500"
-              required
-            />
-            {!resubmitComment.trim() && (
-              <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">
-                * A student comment is strictly required before re-submitting.
-              </span>
-            )}
-          </div>
-
-          <div>
-            <label className="block font-bold text-slate-800 mb-1">
-              Attach Supporting Proof Document (Optional PDF / Image)
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                accept=".pdf,.png,.jpg,.jpeg"
-                onChange={(e) => handleFileUpload(e, setResubmitProofUrl, setResubmitProofName)}
-                className="hidden"
-                id="resubmit-proof-file"
-              />
-              <label
-                htmlFor="resubmit-proof-file"
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-300 rounded-lg cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
-              >
-                <Upload className="w-4 h-4 text-brand-600" />
-                <span>Upload Supporting Proof...</span>
-              </label>
-              {resubmitProofName ? (
-                <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-lg border text-xs font-mono text-slate-800">
-                  <FileText className="w-4 h-4 text-brand-600" />
-                  <span className="truncate max-w-[160px]">{resubmitProofName}</span>
-                  <button
-                    type="button"
-                    onClick={() => { setResubmitProofUrl(''); setResubmitProofName(''); }}
-                    className="text-red-500 hover:text-red-700 ml-1"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <span className="text-[11px] text-slate-400 italic">No proof attached</span>
-              )}
-            </div>
-            <p className="text-[10px] text-slate-500 mt-1">
-              Supported formats: Fee receipts, library clearance proof, fine payment receipts (PDF, JPG, PNG). Max 8MB.
-            </p>
-          </div>
-
-          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setShowResubmitModal(false)}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submittingResubmit || !resubmitComment.trim()}
-              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg text-xs shadow-xs flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>{submittingResubmit ? 'Re-submitting...' : `Confirm Re-submission to ${rejectedStage?.department_name}`}</span>
-            </button>
-          </div>
-        </form>
-      </Modal>
+        requestItem={activeRequest}
+        rejectedStageName={rejectedStage?.department_name}
+        rejectionReason={rejectedStage?.remarks}
+        onSuccess={(msg) => {
+          showAlert(msg, 'success');
+          if (onSubmitRequest) onSubmitRequest({ refreshOnly: true });
+          fetchAuditLogs();
+        }}
+      />
     </div>
   );
 };

@@ -60,7 +60,7 @@ export const LoginPage = () => {
     { title: '102-Bhavani S', subtitle: '4th Yr Higher Studies (4-IT-A)', id: 'IT2024002', role: 'Student', icon: User, color: 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100' },
     { title: 'S.Kavishree', subtitle: 'FA (3rd Yr IT-A Incharge)', id: 'EMP-FA-IT-04', role: 'FA', icon: Award, color: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100' },
     { title: 'V.Ranjith', subtitle: 'FA (3rd Yr IT-A Incharge)', id: 'EMP-FA-IT-03', role: 'FA', icon: Award, color: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100' },
-    { title: 'V.Praveen Kumar', subtitle: 'FA (3rd Yr IT-B Incharge)', id: 'EMP-FA-IT-01', role: 'FA', icon: Award, color: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100' },
+    { title: 'V Praveenkumar', subtitle: 'FA (3rd Yr IT-B Incharge)', id: 'EMP-FA-IT-01', role: 'FA', icon: Award, color: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100' },
     { title: 'N.Selvaganesh', subtitle: 'FA (3rd Yr IT-B Incharge)', id: 'EMP-FA-IT-02', role: 'FA', icon: Award, color: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100' },
     { title: '25-Harshul', subtitle: 'Kavishree Advisee (3-IT-A)', id: 'IT2025025', role: 'Student', icon: User, color: 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100' },
     { title: '1-Abinaya', subtitle: 'Ranjith Advisee (3-IT-A)', id: 'IT2025001', role: 'Student', icon: User, color: 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100' },

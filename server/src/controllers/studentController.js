@@ -103,10 +103,12 @@ exports.submitNoDuesRequest = async (req, res) => {
       higher_degree,
       higher_app_form_url,
       higher_scorecard_url,
+      higher_letter_url,
       higher_contact,
       exam_name,
       exam_reg_no,
       admit_card_url,
+      exam_letter_url,
       exam_details,
       startup_name,
       business_idea,
@@ -153,15 +155,15 @@ exports.submitNoDuesRequest = async (req, res) => {
       `INSERT INTO nodues_requests (
         request_number, register_number, student_name, id_card_number, department, year, overall_status, progress_percentage, current_stage,
         career_option, company_name, job_designation, ctc_package, offer_letter_url,
-        higher_college_name, higher_degree, higher_app_form_url, higher_scorecard_url, higher_contact,
-        exam_name, exam_reg_no, admit_card_url, exam_details,
+        higher_college_name, higher_degree, higher_app_form_url, higher_scorecard_url, higher_letter_url, higher_contact,
+        exam_name, exam_reg_no, admit_card_url, exam_letter_url, exam_details,
         startup_name, business_idea, business_details, pitch_deck_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 0, 'Phase 1 Review (DPC / Central Library / Dept Library)',
         career_option || null, company_name || null, job_designation || null, ctc_package || null, offer_letter_url || null,
-        higher_college_name || null, higher_degree || null, higher_app_form_url || null, higher_scorecard_url || null, higher_contact || null,
-        exam_name || null, exam_reg_no || null, admit_card_url || null, exam_details || null,
+        higher_college_name || null, higher_degree || null, higher_app_form_url || null, higher_scorecard_url || null, higher_letter_url || null, higher_contact || null,
+        exam_name || null, exam_reg_no || null, admit_card_url || null, exam_letter_url || null, exam_details || null,
         startup_name || null, business_idea || null, business_details || null, pitch_deck_url || null
       ]
     );
@@ -247,6 +249,8 @@ exports.cancelNoDuesRequest = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Approved requests cannot be cancelled.' });
     }
 
+    // Delete audit logs, stages, and request record cleanly
+    await query(`DELETE FROM nodues_audit_logs WHERE request_id = ?`, [requestId]);
     await query(`DELETE FROM nodues_stages WHERE request_id = ?`, [requestId]);
     await query(`DELETE FROM nodues_requests WHERE id = ?`, [requestId]);
 

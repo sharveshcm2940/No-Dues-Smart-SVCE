@@ -41,8 +41,42 @@ export const Header = ({ notifications: propNotifications = null, activeTab, set
   useEffect(() => {
     if (!user) return;
     fetchLiveNotifications();
-    const interval = setInterval(fetchLiveNotifications, 4000);
-    return () => clearInterval(interval);
+
+    const token = localStorage.getItem('nodues_token');
+    let eventSource;
+
+    if (token) {
+      const hostname = window.location.hostname;
+      const sseUrl = `http://${hostname}:5000/api/sse?token=${token}`;
+
+      try {
+        eventSource = new EventSource(sseUrl);
+
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'notification' || data.type === 'nodues_update' || data.type === 'hallticket_update') {
+              fetchLiveNotifications();
+            }
+          } catch (e) {
+            // Heartbeat
+          }
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource) eventSource.close();
+        };
+      } catch (e) {
+        console.error('SSE Stream Error:', e);
+      }
+    }
+
+    const interval = setInterval(fetchLiveNotifications, 5000);
+
+    return () => {
+      if (eventSource) eventSource.close();
+      clearInterval(interval);
+    };
   }, [user]);
 
   const activeNotifications = propNotifications && propNotifications.length > 0 ? propNotifications : liveNotifications;
@@ -117,7 +151,7 @@ export const Header = ({ notifications: propNotifications = null, activeTab, set
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 py-0 z-50 overflow-hidden text-left animate-in fade-in duration-150">
+                <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-sm sm:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 py-0 z-50 overflow-hidden text-left animate-in fade-in duration-150">
                   <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                     <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                       <Bell className="w-4 h-4 text-brand-600" />

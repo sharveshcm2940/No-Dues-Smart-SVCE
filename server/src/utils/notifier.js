@@ -1,4 +1,5 @@
 const { query, getOne } = require('../config/db');
+const { broadcastEvent } = require('./sse');
 
 /**
  * Dispatches notifications simultaneously to BOTH the Student AND their respective Faculty Advisor (FA).
@@ -12,6 +13,7 @@ async function notifyStudentAndFA({ registerNumber, requestNumber, title, studen
          VALUES (?, ?, ?, ?)`,
         [registerNumber, title, studentMsg, type]
       );
+      broadcastEvent('notification', { title, message: studentMsg, type }, registerNumber);
     }
 
     // 2. Fetch Student Profile to resolve Respective FA details
@@ -49,7 +51,11 @@ async function notifyStudentAndFA({ registerNumber, requestNumber, title, studen
          VALUES (?, ?, ?, ?)`,
         [target, `Advisee Alert: ${title}`, finalFaMsg, type]
       );
+      broadcastEvent('notification', { title: `Advisee Alert: ${title}`, message: finalFaMsg, type }, target);
     }
+
+    // Broadcast global stage update to dashboard listeners
+    broadcastEvent('nodues_update', { registerNumber, requestNumber, title });
 
   } catch (error) {
     console.error('Error dispatching dual notification to FA & Student:', error);

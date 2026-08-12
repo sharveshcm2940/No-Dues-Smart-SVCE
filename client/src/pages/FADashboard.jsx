@@ -48,24 +48,56 @@ export const FADashboard = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showStudentModal, setShowStudentModal] = useState(false);
 
-  // Settings
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [settingsMsg, setSettingsMsg] = useState({ type: '', text: '' });
+  // Hall Ticket Management States
+  const [htStudents, setHtStudents] = useState([]);
+  const [htStats, setHtStats] = useState({ totalStudents: 0, issuedCount: 0, notIssuedCount: 0 });
+  const [htSearchText, setHtSearchText] = useState('');
+  const [htStatusFilter, setHtStatusFilter] = useState('ALL');
+  const [htNoDuesFilter, setHtNoDuesFilter] = useState('ALL');
+  const [htYearFilter, setHtYearFilter] = useState('ALL');
+  
+  // Confirmation Modal
+  const [showHTConfirmModal, setShowHTConfirmModal] = useState(false);
+  const [targetHTStudent, setTargetHTStudent] = useState(null);
+  const [targetHTAction, setTargetHTAction] = useState('Issued');
+  const [htActionRemarks, setHtActionRemarks] = useState('');
+  const [htSubmitting, setHtSubmitting] = useState(false);
+
+  // Student Profile Detail Modal
+  const [showHTProfileModal, setShowHTProfileModal] = useState(false);
+  const [htProfileData, setHtProfileData] = useState(null);
+  const [loadingHTProfile, setLoadingHTProfile] = useState(false);
 
   const fetchDashboard = async () => {
     try {
       const res = await api.get('/fa/dashboard');
-      if (res.data.success) setDashboardData(res.data.data);
+      if (res.data && res.data.success) {
+        setDashboardData(res.data.data);
+      } else {
+        setDashboardData({ advisor: null, stats: { totalAdvisees: 0, pendingApprovals: 0, approvedCount: 0 }, advisees: [], pendingFARequests: [] });
+      }
     } catch (err) {
       console.error('Error fetching FA dashboard:', err);
+      setDashboardData({ advisor: null, stats: { totalAdvisees: 0, pendingApprovals: 0, approvedCount: 0 }, advisees: [], pendingFARequests: [] });
+    }
+  };
+
+  const fetchAssignedStudents = async () => {
+    try {
+      const res = await api.get('/fa/students');
+      if (res.data && res.data.success) {
+        setHtStudents(res.data.data.students || []);
+        setHtStats(res.data.data.stats || { totalStudents: 0, issuedCount: 0, notIssuedCount: 0 });
+      }
+    } catch (err) {
+      console.error('Error fetching assigned students roster:', err);
     }
   };
 
   const fetchNotifications = async () => {
     try {
       const res = await api.get('/student/notifications');
-      if (res.data.success) setNotifications(res.data.notifications);
+      if (res.data && res.data.success) setNotifications(res.data.notifications || []);
     } catch (err) {
       console.error('Error fetching notifications:', err);
     }
@@ -74,7 +106,7 @@ export const FADashboard = () => {
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true);
-      await Promise.all([fetchDashboard(), fetchNotifications()]);
+      await Promise.all([fetchDashboard(), fetchNotifications(), fetchAssignedStudents()]);
       setLoading(false);
     };
     loadAll();
@@ -85,6 +117,63 @@ export const FADashboard = () => {
 
     return () => clearInterval(interval);
   }, []);
+
+  const handleUpdateHallTicket = async () => {
+    if (!targetHTStudent) return;
+    setHtSubmitting(true);
+    try {
+      const res = await api.post('/fa/hall-ticket/update', {
+        register_number: targetHTStudent.register_number,
+        hall_ticket_status: targetHTAction,
+        remarks: htActionRemarks
+      });
+
+      if (res.data.success) {
+        showAlert(res.data.message, 'success');
+        setShowHTConfirmModal(false);
+        setTargetHTStudent(null);
+        setHtActionRemarks('');
+        fetchDashboard();
+        fetchAssignedStudents();
+      }
+    } catch (err) {
+      showAlert(err.response?.data?.message || 'Error updating Hall Ticket status.', 'danger');
+    } finally {
+      setHtSubmitting(false);
+    }
+  };
+
+  const openHTProfileModal = async (regNo) => {
+    setShowHTProfileModal(true);
+    setLoadingHTProfile(true);
+    try {
+      const res = await api.get(`/fa/students/${regNo}/detail`);
+      if (res.data && res.data.success) {
+        setHtProfileData(res.data.data);
+      }
+    } catch (err) {
+      console.error('Error loading student profile detail:', err);
+    } finally {
+      setLoadingHTProfile(false);
+    }
+  };
+
+  const filteredHtStudents = htStudents.filter((s) => {
+    const matchesSearch = !htSearchText.trim() || 
+      s.full_name?.toLowerCase().includes(htSearchText.toLowerCase()) || 
+      s.register_number?.toLowerCase().includes(htSearchText.toLowerCase());
+
+    const matchesStatus = htStatusFilter === 'ALL' || s.hall_ticket_status === htStatusFilter;
+
+    const matchesNoDues = htNoDuesFilter === 'ALL' || 
+      (htNoDuesFilter === 'Completed' && (s.nodues_status === 'Approved' || s.nodues_status === 'Completed')) ||
+      (htNoDuesFilter === 'In Progress' && s.nodues_status === 'In Progress') ||
+      (htNoDuesFilter === 'Rejected' && s.nodues_status === 'Rejected');
+
+    const matchesYear = htYearFilter === 'ALL' || s.year === htYearFilter;
+
+    return matchesSearch && matchesStatus && matchesNoDues && matchesYear;
+  });
 
   const handleFAAction = async (action) => {
     if (!selectedRequest) return;
@@ -129,13 +218,23 @@ export const FADashboard = () => {
     }
   };
 
-  if (loading || !dashboardData) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center text-slate-500 font-sans text-xs font-semibold">
-        Loading Faculty Advisor (FA) Portal Environment...
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+          <span>Loading Faculty Advisor (FA) Portal Environment...</span>
+        </div>
       </div>
     );
   }
+
+  const {
+    advisor = null,
+    stats = { totalAdvisees: 0, pendingApprovals: 0, approvedCount: 0 },
+    advisees = [],
+    pendingFARequests = []
+  } = dashboardData || {};
 
   const handleBulkApprove = () => {
     showConfirm('Are you sure you want to bulk approve all pending No-Dues requests for your assigned advisees?', async () => {
@@ -151,16 +250,16 @@ export const FADashboard = () => {
     });
   };
 
-  const { advisor, stats, advisees, pendingFARequests } = dashboardData;
+
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans selection:bg-brand-600 selection:text-white">
       <Header notifications={notifications} activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
+      <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto">
         <Sidebar role="faculty_advisor" activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <main className="flex-1 p-6 space-y-6 overflow-y-auto">
+        <main className="flex-1 p-3.5 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
 
           {/* TAB 1: OVERVIEW DASHBOARD */}
           {activeTab === 'dashboard' && (
@@ -454,6 +553,218 @@ export const FADashboard = () => {
             </div>
           )}
 
+          {/* TAB: STUDENTS / HALL TICKET MANAGEMENT */}
+          {activeTab === 'students' && (
+            <div className="space-y-6">
+
+              {/* Section Header */}
+              <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-brand-600" />
+                    <span>Hall Ticket Management & Advisee Students Roster</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    View all students assigned under your Faculty Advisor responsibility and manually manage Hall Ticket issuance.
+                  </p>
+                </div>
+                <Badge variant="brand">{advisor?.full_name || 'Faculty Advisor'}</Badge>
+              </div>
+
+              {/* 3 Summary Metrics Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                
+                {/* Total Students Card */}
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between text-slate-500 mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Assigned Students</span>
+                    <Users className="w-4 h-4 text-brand-600" />
+                  </div>
+                  <p className="text-2xl font-extrabold text-slate-900">{htStats.totalStudents}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Total advisees assigned under your care</p>
+                </div>
+
+                {/* Hall Tickets Issued Card */}
+                <div className="bg-white p-4 rounded-lg border border-emerald-200 bg-emerald-50/20 shadow-xs">
+                  <div className="flex items-center justify-between text-emerald-800 mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Hall Tickets Issued</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <p className="text-2xl font-extrabold text-emerald-700">{htStats.issuedCount}</p>
+                  <p className="text-[11px] text-emerald-600 mt-1">Confirmed and issued to students ✅</p>
+                </div>
+
+                {/* Hall Tickets Not Issued Card */}
+                <div className="bg-white p-4 rounded-lg border border-amber-200 bg-amber-50/20 shadow-xs">
+                  <div className="flex items-center justify-between text-amber-800 mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Not Issued</span>
+                    <Clock className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <p className="text-2xl font-extrabold text-amber-700">{htStats.notIssuedCount}</p>
+                  <p className="text-[11px] text-amber-600 mt-1">Pending manual FA verification ⏳</p>
+                </div>
+
+              </div>
+
+              {/* Search & Multi-Filter Control Bar */}
+              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+                  
+                  {/* Search Input */}
+                  <div className="lg:col-span-2 relative">
+                    <input
+                      type="text"
+                      value={htSearchText}
+                      onChange={(e) => setHtSearchText(e.target.value)}
+                      placeholder="Search by student name or register number..."
+                      className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 font-medium focus:bg-white transition-colors"
+                    />
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  </div>
+
+                  {/* Hall Ticket Status Filter */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Hall Ticket Status</label>
+                    <select
+                      value={htStatusFilter}
+                      onChange={(e) => setHtStatusFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-800"
+                    >
+                      <option value="ALL">All Statuses</option>
+                      <option value="Issued">Issued ✅</option>
+                      <option value="Not Issued">Not Issued ⏳</option>
+                    </select>
+                  </div>
+
+                  {/* No Due Status Filter */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">No Due Status</label>
+                    <select
+                      value={htNoDuesFilter}
+                      onChange={(e) => setHtNoDuesFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-800"
+                    >
+                      <option value="ALL">All No-Dues States</option>
+                      <option value="Completed">Approved / Completed</option>
+                      <option value="In Progress">In Progress</option>
+                      <option value="Rejected">Rejected</option>
+                    </select>
+                  </div>
+
+                  {/* Year Filter */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Academic Year</label>
+                    <select
+                      value={htYearFilter}
+                      onChange={(e) => setHtYearFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-800"
+                    >
+                      <option value="ALL">All Years</option>
+                      <option value="IV Year">IV Year</option>
+                      <option value="III Year">III Year</option>
+                      <option value="II Year">II Year</option>
+                      <option value="I Year">I Year</option>
+                    </select>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Searchable Student Table */}
+              <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+                <DataTable
+                  columns={[
+                    { header: 'S.No', cell: (_, index) => <span className="font-mono text-slate-500 font-semibold">{index + 1}</span> },
+                    { 
+                      header: 'Student Name', 
+                      accessor: 'full_name', 
+                      cell: (s) => (
+                        <div>
+                          <div className="font-bold text-slate-900 text-xs">{s.full_name}</div>
+                          <div className="text-[11px] text-slate-400">{s.email}</div>
+                        </div>
+                      ) 
+                    },
+                    { header: 'Register No', accessor: 'register_number', cell: (s) => <span className="font-mono font-bold text-brand-600">{s.register_number}</span> },
+                    { header: 'Dept', accessor: 'department', cell: (s) => <span className="font-semibold text-slate-700">{s.department}</span> },
+                    { header: 'Year / Sec', cell: (s) => <span className="font-medium text-slate-700">{s.year} ({s.section})</span> },
+                    { 
+                      header: 'No Due Status', 
+                      cell: (s) => (
+                        <Badge variant={s.nodues_status === 'Approved' ? 'success' : (s.nodues_status === 'Rejected' ? 'danger' : 'warning')}>
+                          {s.nodues_status || 'Not Submitted'}
+                        </Badge>
+                      ) 
+                    },
+                    { 
+                      header: 'Hall Ticket Status', 
+                      cell: (s) => (
+                        <div>
+                          {s.hall_ticket_status === 'Issued' ? (
+                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full font-bold text-[11px] inline-flex items-center gap-1 shadow-2xs">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Issued
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full font-bold text-[11px] inline-flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-amber-600" /> Not Issued
+                            </span>
+                          )}
+                          {s.hall_ticket_issued_at && (
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              {new Date(s.hall_ticket_issued_at).toLocaleDateString()} {new Date(s.hall_ticket_issued_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          )}
+                        </div>
+                      ) 
+                    },
+                    { 
+                      header: 'Action', 
+                      cell: (s) => (
+                        <div className="flex items-center gap-1.5">
+                          {s.hall_ticket_status === 'Issued' ? (
+                            <button
+                              onClick={() => {
+                                setTargetHTStudent(s);
+                                setTargetHTAction('Not Issued');
+                                setShowHTConfirmModal(true);
+                              }}
+                              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold rounded text-xs transition-colors cursor-pointer"
+                            >
+                              Revoke Issue
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setTargetHTStudent(s);
+                                setTargetHTAction('Issued');
+                                setShowHTConfirmModal(true);
+                              }}
+                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Mark as Issued</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => openHTProfileModal(s.register_number)}
+                            className="px-2 py-1 bg-slate-100 hover:bg-brand-50 hover:text-brand-700 text-slate-700 border border-slate-200 font-semibold rounded text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-brand-600" />
+                            <span>Profile</span>
+                          </button>
+                        </div>
+                      ) 
+                    }
+                  ]}
+                  data={filteredHtStudents}
+                  searchPlaceholder="Search advisee roster..."
+                />
+              </div>
+
+            </div>
+          )}
+
           {/* TAB 4: REPORTS */}
           {activeTab === 'reports' && (
             <ReportsExporter />
@@ -513,6 +824,188 @@ export const FADashboard = () => {
 
         </main>
       </div>
+
+      {/* HALL TICKET UPDATE CONFIRMATION MODAL */}
+      <Modal
+        isOpen={showHTConfirmModal}
+        onClose={() => setShowHTConfirmModal(false)}
+        title={`Confirm Hall Ticket Status Update`}
+        maxWidth="max-w-md"
+      >
+        {targetHTStudent && (
+          <div className="space-y-4 text-xs">
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-bold text-amber-900 text-sm">Confirmation Required</h4>
+                <p className="text-amber-800 mt-1 leading-relaxed">
+                  Are you sure you want to mark the Hall Ticket as <strong>{targetHTAction}</strong> for student:
+                </p>
+                <div className="mt-2 bg-white p-2.5 rounded border border-amber-200 font-medium">
+                  <div className="font-bold text-slate-900">{targetHTStudent.full_name}</div>
+                  <div className="text-slate-600 font-mono">Reg No: {targetHTStudent.register_number} | Sec: {targetHTStudent.section}</div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Optional Remarks / Reason</label>
+              <input
+                type="text"
+                value={htActionRemarks}
+                onChange={(e) => setHtActionRemarks(e.target.value)}
+                placeholder="Enter remarks (e.g. Verified physically, Fees cleared)..."
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800"
+              />
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowHTConfirmModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleUpdateHallTicket}
+                disabled={htSubmitting}
+                className={`px-4 py-2 text-white font-semibold rounded-lg shadow-xs flex items-center gap-1.5 ${
+                  targetHTAction === 'Issued' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirm {targetHTAction}</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* DETAILED STUDENT PROFILE & HALL TICKET AUDIT HISTORY MODAL */}
+      <Modal
+        isOpen={showHTProfileModal}
+        onClose={() => setShowHTProfileModal(false)}
+        title={`Student Profile & Audit History - ${htProfileData?.student?.full_name || ''}`}
+        maxWidth="max-w-3xl"
+      >
+        {loadingHTProfile ? (
+          <div className="p-8 text-center text-slate-500 text-xs">Loading detailed profile & audit history...</div>
+        ) : (
+          htProfileData?.student && (
+            <div className="space-y-6 text-xs">
+              
+              {/* Student Information */}
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Student Name</span>
+                  <span className="font-bold text-slate-900 text-sm">{htProfileData.student.full_name}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Register Number</span>
+                  <span className="font-mono font-bold text-brand-600">{htProfileData.student.register_number}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Department</span>
+                  <span className="font-semibold text-slate-800">{htProfileData.student.department}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Academic Year</span>
+                  <span className="font-semibold text-slate-800">{htProfileData.student.year} ({htProfileData.student.section})</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Email Address</span>
+                  <span className="font-medium text-slate-700">{htProfileData.student.email}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Phone Number</span>
+                  <span className="font-medium text-slate-700">{htProfileData.student.phone}</span>
+                </div>
+              </div>
+
+              {/* Hall Ticket Current Status Info */}
+              <div className="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
+                <h4 className="font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center justify-between">
+                  <span>Hall Ticket Information</span>
+                  <span className={`px-2.5 py-0.5 rounded-full font-bold text-xs ${
+                    htProfileData.student.hall_ticket_status === 'Issued' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {htProfileData.student.hall_ticket_status === 'Issued' ? 'Issued ✅' : 'Not Issued ⏳'}
+                  </span>
+                </h4>
+                <div className="grid grid-cols-2 gap-3 text-slate-700">
+                  <div>
+                    <span className="font-semibold block text-slate-500">Issued By:</span>
+                    <span className="font-bold text-slate-900">{htProfileData.student.hall_ticket_issued_by || 'N/A'} ({htProfileData.student.hall_ticket_issued_by_emp_id || ''})</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold block text-slate-500">Issued Date & Time:</span>
+                    <span className="font-mono text-slate-800">
+                      {htProfileData.student.hall_ticket_issued_at 
+                        ? `${new Date(htProfileData.student.hall_ticket_issued_at).toLocaleDateString()} ${new Date(htProfileData.student.hall_ticket_issued_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        : 'N/A'
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hall Ticket Audit History */}
+              <div className="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+                <h4 className="font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-brand-600" />
+                  <span>Hall Ticket Audit History ({htProfileData.htAuditLogs?.length || 0})</span>
+                </h4>
+                {htProfileData.htAuditLogs && htProfileData.htAuditLogs.length > 0 ? (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {htProfileData.htAuditLogs.map((log) => (
+                      <div key={log.id} className="p-3 bg-slate-50 rounded border border-slate-200 flex items-center justify-between">
+                        <div>
+                          <div className="font-bold text-slate-800">
+                            Status changed from <span className="font-mono">{log.previous_status}</span> to <span className="font-mono font-bold text-brand-600">{log.new_status}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-500">Updated By: {log.updated_by_name} ({log.updated_by_emp_id}) {log.remarks ? `| Remarks: ${log.remarks}` : ''}</div>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">{new Date(log.timestamp).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-400 text-xs italic">No hall ticket status change audit history recorded yet.</p>
+                )}
+              </div>
+
+              {/* No Due Clearance Stages Breakdown */}
+              {htProfileData.noduesRequest && (
+                <div className="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+                  <h4 className="font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center justify-between">
+                    <span>No-Dues Clearance Stage Breakdown ({htProfileData.noduesRequest.request_number})</span>
+                    <Badge variant={htProfileData.noduesRequest.overall_status === 'Approved' ? 'success' : 'warning'}>
+                      {htProfileData.noduesRequest.overall_status}
+                    </Badge>
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {htProfileData.stages?.map((stage) => (
+                      <div key={stage.id} className="p-2.5 bg-slate-50 rounded border border-slate-200">
+                        <div className="font-bold text-slate-800 text-[11px]">{stage.department_name}</div>
+                        <div className={`text-xs font-bold mt-1 ${
+                          stage.status === 'Approved' ? 'text-emerald-700' : (stage.status === 'Rejected' ? 'text-red-600' : 'text-amber-600')
+                        }`}>
+                          {stage.status}
+                        </div>
+                        {stage.approved_by && <div className="text-[10px] text-slate-400 mt-0.5 truncate">{stage.approved_by}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )
+        )}
+      </Modal>
 
       {/* ADVISEE STUDENT DETAILS MODAL */}
       <Modal isOpen={showStudentModal} onClose={() => setShowStudentModal(false)} title={`Advisee Student Full Profile - ${selectedStudent?.full_name}`}>

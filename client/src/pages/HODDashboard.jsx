@@ -59,9 +59,14 @@ export const HODDashboard = () => {
   const fetchDashboard = async () => {
     try {
       const res = await api.get('/hod/dashboard');
-      if (res.data.success) setDashboardData(res.data.data);
+      if (res.data && res.data.success) {
+        setDashboardData(res.data.data);
+      } else {
+        setDashboardData({ hod: null, stats: { totalRequests: 0, pendingApprovals: 0, completedCount: 0, totalStudents: 0 }, pendingHODApprovals: [], allDepartmentRequests: [], allStudents: [] });
+      }
     } catch (err) {
       console.error('Error fetching HOD dashboard:', err);
+      setDashboardData({ hod: null, stats: { totalRequests: 0, pendingApprovals: 0, completedCount: 0, totalStudents: 0 }, pendingHODApprovals: [], allDepartmentRequests: [], allStudents: [] });
     }
   };
 
@@ -270,24 +275,33 @@ export const HODDashboard = () => {
     });
   };
 
-  if (loading || !dashboardData) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center text-slate-500 font-sans text-xs font-semibold">
-        Loading Head of Department (HOD) Executive Portal Environment...
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+          <span>Loading Head of Department (HOD) Executive Portal Environment...</span>
+        </div>
       </div>
     );
   }
 
-  const { hod, stats, pendingHODApprovals, allDepartmentRequests, allStudents = [] } = dashboardData;
+  const {
+    hod = null,
+    stats = { totalRequests: 0, pendingApprovals: 0, completedCount: 0, totalStudents: 0 },
+    pendingHODApprovals = [],
+    allDepartmentRequests = [],
+    allStudents = []
+  } = dashboardData || {};
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
       <Header notifications={notifications} activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
+      <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto">
         <Sidebar role="hod" activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <main className="flex-1 p-6 space-y-6 overflow-y-auto">
+        <main className="flex-1 p-3.5 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
 
           {/* TAB 1: EXECUTIVE OVERVIEW */}
           {activeTab === 'dashboard' && (
@@ -571,7 +585,7 @@ export const HODDashboard = () => {
                   { header: 'Student Name', accessor: 'full_name', cell: (r) => <span className="font-bold text-slate-900">{r.full_name}</span> },
                   { header: 'ID Card No', accessor: 'id_card_number', cell: (r) => <span className="font-mono text-slate-600">{r.id_card_number}</span> },
                   { header: 'Year / Section', accessor: 'year', cell: (r) => <span className="text-slate-700 font-medium">{r.year} ({r.section || 'Sec-A'})</span> },
-                  { header: 'Faculty Advisor', accessor: 'advisor_name', cell: (r) => <span className="font-semibold text-slate-800">{r.advisor_name || 'V.Praveen Kumar'}</span> },
+                  { header: 'Faculty Advisor', accessor: 'advisor_name', cell: (r) => <span className="font-semibold text-slate-800">{r.advisor_name || 'V Praveenkumar'}</span> },
                   { header: 'Clearance Status', accessor: 'nodues_status', cell: (r) => <Badge>{r.nodues_status}</Badge> },
                   { header: 'Current Stage', accessor: 'current_stage', cell: (r) => <span className="font-medium text-slate-600">{r.current_stage}</span> },
                   { header: 'Certificate ID', accessor: 'certificate_number', cell: (r) => <span className="font-mono text-emerald-700 font-bold">{r.certificate_number || '—'}</span> }

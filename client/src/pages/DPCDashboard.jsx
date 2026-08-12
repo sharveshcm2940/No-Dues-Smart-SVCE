@@ -38,6 +38,7 @@ export const DPCDashboard = () => {
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [pathwayFilter, setPathwayFilter] = useState('ALL');
 
   // Settings
   const [currentPassword, setCurrentPassword] = useState('');
@@ -47,16 +48,21 @@ export const DPCDashboard = () => {
   const fetchDashboard = async () => {
     try {
       const res = await api.get('/dpc/dashboard');
-      if (res.data.success) setDashboardData(res.data.data);
+      if (res.data && res.data.success) {
+        setDashboardData(res.data.data);
+      } else {
+        setDashboardData({ dpc: null, stats: { totalSubmissions: 0, pendingApprovals: 0, approvedCount: 0 }, careerSubmissions: [], pendingDPCRequests: [] });
+      }
     } catch (err) {
       console.error('Error fetching DPC dashboard:', err);
+      setDashboardData({ dpc: null, stats: { totalSubmissions: 0, pendingApprovals: 0, approvedCount: 0 }, careerSubmissions: [], pendingDPCRequests: [] });
     }
   };
 
   const fetchNotifications = async () => {
     try {
       const res = await api.get('/student/notifications');
-      if (res.data.success) setNotifications(res.data.notifications);
+      if (res.data && res.data.success) setNotifications(res.data.notifications || []);
     } catch (err) {
       console.error('Error fetching notifications:', err);
     }
@@ -120,15 +126,25 @@ export const DPCDashboard = () => {
     }
   };
 
-  if (loading || !dashboardData) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center text-slate-500 font-sans text-xs font-semibold">
-        Loading Department Placement Coordinator (DPC) Portal...
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+          <span>Loading Department Placement Coordinator (DPC) Portal...</span>
+        </div>
       </div>
     );
   }
 
-  const { dpc, stats, careerSubmissions, pendingDPCRequests } = dashboardData;
+  const {
+    dpc = null,
+    stats = { totalSubmissions: 0, pendingApprovals: 0, approvedCount: 0 },
+    careerSubmissions = [],
+    pendingDPCRequests = []
+  } = dashboardData || {};
+
+  const isDataUrl = (val) => typeof val === 'string' && val.startsWith('data:');
 
   const getOptionBadgeColor = (opt) => {
     switch (opt) {
@@ -143,6 +159,158 @@ export const DPCDashboard = () => {
       default:
         return 'bg-slate-100 text-slate-700 border-slate-200';
     }
+  };
+
+  const getSegregatedColumns = (filter) => {
+    const commonHeader = [
+      { header: 'Request ID', accessor: 'request_number', cell: (r) => <span className="font-mono font-bold text-brand-600">{r.request_number}</span> },
+      { header: 'Register No', accessor: 'register_number', cell: (r) => <span className="font-mono font-semibold text-slate-800">{r.register_number}</span> },
+      { 
+        header: 'Student Name', 
+        accessor: 'student_name', 
+        cell: (r) => (
+          <div>
+            <div className="font-bold text-slate-900">{r.student_name}</div>
+            <div className="text-[11px] text-slate-400">{r.section} ({r.year})</div>
+          </div>
+        ) 
+      }
+    ];
+
+    const actionColumn = {
+      header: 'Action',
+      cell: (r) => (
+        <button
+          onClick={() => {
+            setSelectedRequest(r);
+            setShowApprovalModal(true);
+          }}
+          className="px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1 cursor-pointer"
+        >
+          <Eye className="w-3.5 h-3.5" />
+          <span>Audit Credentials</span>
+        </button>
+      )
+    };
+
+    const statusColumn = { header: 'Status', accessor: 'dpc_stage_status', cell: (r) => <Badge>{r.dpc_stage_status}</Badge> };
+
+    if (filter === 'Placements') {
+      return [
+        ...commonHeader,
+        { header: 'Company Name', accessor: 'company_name', cell: (r) => <span className="font-bold text-blue-900">{r.company_name || 'N/A'}</span> },
+        { header: 'Job Designation', accessor: 'job_designation', cell: (r) => <span className="font-medium text-slate-800">{r.job_designation || 'N/A'}</span> },
+        { header: 'CTC Package', accessor: 'ctc_package', cell: (r) => <span className="font-semibold text-emerald-700">{r.ctc_package || 'N/A'}</span> },
+        { 
+          header: 'Offer Letter Proof', 
+          cell: (r) => r.offer_letter_url ? (
+            <a href={r.offer_letter_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-semibold flex items-center gap-1 text-xs">
+              <FileText className="w-3.5 h-3.5" /> Offer Letter
+            </a>
+          ) : <span className="text-slate-400 text-xs">No file</span>
+        },
+        statusColumn,
+        actionColumn
+      ];
+    }
+
+    if (filter === 'Higher Studies') {
+      return [
+        ...commonHeader,
+        { header: 'Target University', accessor: 'higher_college_name', cell: (r) => <span className="font-bold text-purple-900">{r.higher_college_name || 'N/A'}</span> },
+        { header: 'Degree & Program', accessor: 'higher_degree', cell: (r) => <span className="font-medium text-slate-800">{r.higher_degree || 'N/A'}</span> },
+        { 
+          header: 'Attached Proofs', 
+          cell: (r) => (
+            <div className="flex flex-wrap items-center gap-1">
+              {r.higher_app_form_url && (
+                <a href={r.higher_app_form_url} target="_blank" rel="noreferrer" className="px-1.5 py-0.5 bg-purple-100 text-purple-800 hover:bg-purple-200 rounded text-[10px] font-bold">App Form</a>
+              )}
+              {r.higher_scorecard_url && (
+                <a href={r.higher_scorecard_url} target="_blank" rel="noreferrer" className="px-1.5 py-0.5 bg-purple-100 text-purple-800 hover:bg-purple-200 rounded text-[10px] font-bold">Scorecard</a>
+              )}
+              {r.higher_letter_url && (
+                <a href={r.higher_letter_url} target="_blank" rel="noreferrer" className="px-1.5 py-0.5 bg-purple-100 text-purple-800 hover:bg-purple-200 rounded text-[10px] font-bold">Letter</a>
+              )}
+              {!r.higher_app_form_url && !r.higher_scorecard_url && !r.higher_letter_url && (
+                <span className="text-slate-400 text-xs">No files</span>
+              )}
+            </div>
+          ) 
+        },
+        statusColumn,
+        actionColumn
+      ];
+    }
+
+    if (filter === 'Competitive Exams') {
+      return [
+        ...commonHeader,
+        { header: 'Exam Name', accessor: 'exam_name', cell: (r) => <span className="font-bold text-amber-900">{r.exam_name || 'N/A'}</span> },
+        { header: 'Reg / Roll Details', accessor: 'exam_reg_no', cell: (r) => <span className="font-mono text-slate-800">{r.exam_reg_no || 'N/A'}</span> },
+        { header: 'Score / Percentile', accessor: 'exam_details', cell: (r) => <span className="font-medium text-slate-800">{r.exam_details || 'N/A'}</span> },
+        { 
+          header: 'Proof Documents', 
+          cell: (r) => (
+            <div className="flex flex-wrap items-center gap-1">
+              {r.admit_card_url && (
+                <a href={r.admit_card_url} target="_blank" rel="noreferrer" className="px-1.5 py-0.5 bg-amber-100 text-amber-800 hover:bg-amber-200 rounded text-[10px] font-bold">Admit/Scorecard</a>
+              )}
+              {r.exam_letter_url && (
+                <a href={r.exam_letter_url} target="_blank" rel="noreferrer" className="px-1.5 py-0.5 bg-amber-100 text-amber-800 hover:bg-amber-200 rounded text-[10px] font-bold">Letter Proof</a>
+              )}
+              {!r.admit_card_url && !r.exam_letter_url && (
+                <span className="text-slate-400 text-xs">No files</span>
+              )}
+            </div>
+          ) 
+        },
+        statusColumn,
+        actionColumn
+      ];
+    }
+
+    if (filter === 'Entrepreneurship') {
+      return [
+        ...commonHeader,
+        { header: 'Startup Entity', accessor: 'startup_name', cell: (r) => <span className="font-bold text-emerald-900">{r.startup_name || 'N/A'}</span> },
+        { header: 'Business Idea Summary', accessor: 'business_idea', cell: (r) => <span className="font-medium text-slate-800 truncate max-w-[200px] block">{r.business_idea || 'N/A'}</span> },
+        { 
+          header: 'Pitch Deck Proof', 
+          cell: (r) => r.pitch_deck_url ? (
+            <a href={r.pitch_deck_url} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline font-semibold flex items-center gap-1 text-xs">
+              <FileText className="w-3.5 h-3.5" /> Pitch Deck
+            </a>
+          ) : <span className="text-slate-400 text-xs">No deck</span>
+        },
+        statusColumn,
+        actionColumn
+      ];
+    }
+
+    // Default / ALL
+    return [
+      ...commonHeader,
+      { 
+        header: 'Career Pathway', 
+        accessor: 'career_option', 
+        cell: (r) => (
+          <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${getOptionBadgeColor(r.career_option)}`}>
+            {r.career_option || 'Not Selected'}
+          </span>
+        ) 
+      },
+      { 
+        header: 'Key Organization / Details', 
+        cell: (r) => (
+          <span className="text-slate-700 font-medium text-xs">
+            {r.company_name || r.higher_college_name || r.exam_name || r.startup_name || 'N/A'}
+          </span>
+        ) 
+      },
+      statusColumn,
+      actionColumn
+    ];
   };
 
   const handleBulkApprove = () => {
@@ -163,27 +331,24 @@ export const DPCDashboard = () => {
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans selection:bg-brand-600 selection:text-white">
       <Header notifications={notifications} activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
+      <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto">
         <Sidebar role="dpc" activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <main className="flex-1 p-6 space-y-6 overflow-y-auto">
+        <main className="flex-1 p-3.5 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
 
-          {/* TAB 1: DPC OVERVIEW DASHBOARD */}
+          {/* TAB 1: EXECUTIVE OVERVIEW DASHBOARD */}
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               
               {/* DPC Profile Header Banner */}
               <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center text-blue-700 border border-blue-200">
-                    <Building2 className="w-6 h-6" />
+                  <div className="w-12 h-12 rounded-full bg-brand-50 border border-brand-200 flex items-center justify-center text-brand-600 font-bold text-lg">
+                    DPC
                   </div>
                   <div>
-                    <span className="text-[11px] font-bold text-blue-700 uppercase tracking-widest">
-                      PLACEMENT & CAREER PATHWAY VERIFICATION DESK
-                    </span>
-                    <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-                      {dpc?.full_name || 'Dr. R. Placement Coordinator'}
+                    <h2 className="text-lg font-bold text-slate-900">
+                      {dpc?.full_name || 'Department Placement Coordinator'}
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
                       Emp ID: <strong>{dpc?.employee_id}</strong> | Designation: {dpc?.designation} | Dept: <strong>{dpc?.department}</strong>
@@ -193,122 +358,167 @@ export const DPCDashboard = () => {
 
                 <button
                   onClick={() => setActiveTab('approvals')}
-                  className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+                  className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <FileCheck2 className="w-4 h-4" />
                   <span>Stage 5 Career Desk ({stats.pendingApprovals})</span>
                 </button>
               </div>
 
-              {/* 4 Career Pathway Metrics Cards */}
+              {/* 4 Career Pathway Metrics Cards (Interactive Segregation Selectors) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 
                 {/* Placements Card */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => setPathwayFilter(pathwayFilter === 'Placements' ? 'ALL' : 'Placements')}
+                  className={`bg-white p-4 rounded-lg border text-left shadow-xs transition-all cursor-pointer ${
+                    pathwayFilter === 'Placements'
+                      ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20'
+                      : 'border-slate-200 hover:border-blue-300'
+                  }`}
+                >
                   <div className="flex items-center justify-between text-slate-500 mb-1">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Option A: Placements</span>
                     <Briefcase className="w-4 h-4 text-blue-600" />
                   </div>
                   <p className="text-2xl font-extrabold text-slate-900">{stats.placementCount}</p>
                   <p className="text-[11px] text-slate-500 mt-1">Students with verified offer letters</p>
-                </div>
+                </button>
 
                 {/* Higher Studies Card */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => setPathwayFilter(pathwayFilter === 'Higher Studies' ? 'ALL' : 'Higher Studies')}
+                  className={`bg-white p-4 rounded-lg border text-left shadow-xs transition-all cursor-pointer ${
+                    pathwayFilter === 'Higher Studies'
+                      ? 'border-purple-500 ring-2 ring-purple-500/20 bg-purple-50/20'
+                      : 'border-slate-200 hover:border-purple-300'
+                  }`}
+                >
                   <div className="flex items-center justify-between text-slate-500 mb-1">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700">Option B: Higher Studies</span>
                     <GraduationCap className="w-4 h-4 text-purple-600" />
                   </div>
                   <p className="text-2xl font-extrabold text-purple-700">{stats.higherStudiesCount}</p>
                   <p className="text-[11px] text-slate-500 mt-1">MS / M.Tech admit applications</p>
-                </div>
+                </button>
 
                 {/* Competitive Exams Card */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => setPathwayFilter(pathwayFilter === 'Competitive Exams' ? 'ALL' : 'Competitive Exams')}
+                  className={`bg-white p-4 rounded-lg border text-left shadow-xs transition-all cursor-pointer ${
+                    pathwayFilter === 'Competitive Exams'
+                      ? 'border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/20'
+                      : 'border-slate-200 hover:border-amber-300'
+                  }`}
+                >
                   <div className="flex items-center justify-between text-slate-500 mb-1">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Option C: Competitive Exams</span>
                     <FileSpreadsheet className="w-4 h-4 text-amber-600" />
                   </div>
                   <p className="text-2xl font-extrabold text-amber-600">{stats.competitiveExamCount}</p>
                   <p className="text-[11px] text-slate-500 mt-1">GATE / CAT / UPSC scorecards</p>
-                </div>
+                </button>
 
                 {/* Entrepreneurship Card */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => setPathwayFilter(pathwayFilter === 'Entrepreneurship' ? 'ALL' : 'Entrepreneurship')}
+                  className={`bg-white p-4 rounded-lg border text-left shadow-xs transition-all cursor-pointer ${
+                    pathwayFilter === 'Entrepreneurship'
+                      ? 'border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/20'
+                      : 'border-slate-200 hover:border-emerald-300'
+                  }`}
+                >
                   <div className="flex items-center justify-between text-slate-500 mb-1">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Option E: Entrepreneurship</span>
                     <Lightbulb className="w-4 h-4 text-emerald-600" />
                   </div>
                   <p className="text-2xl font-extrabold text-emerald-600">{stats.entrepreneurshipCount}</p>
                   <p className="text-[11px] text-slate-500 mt-1">Registered startups & business ideas</p>
-                </div>
+                </button>
 
               </div>
 
               {/* STAGE 1 PENDING CAREER VERIFICATION DESK */}
-              <div className="space-y-3 bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="space-y-4 bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <Clock className="w-4 h-4 text-amber-600" />
-                      <span>Pending Stage 1 Career Verification Requests ({pendingDPCRequests.length})</span>
+                      <span>Pending Career Verification Requests ({pendingDPCRequests.filter(r => pathwayFilter === 'ALL' || r.career_option === pathwayFilter).length})</span>
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Review 4th Year student career credentials (offer letters, scorecards, admit cards, business plans)
+                      Review 4th Year student career credentials segregated by Option A, B, C, and E
                     </p>
+                  </div>
+
+                  {/* Option Segregation Tab Bar */}
+                  <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setPathwayFilter('ALL')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                        pathwayFilter === 'ALL'
+                          ? 'bg-brand-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      All Options ({pendingDPCRequests.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPathwayFilter('Placements')}
+                      className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                        pathwayFilter === 'Placements'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-blue-700 hover:bg-blue-50'
+                      }`}
+                    >
+                      Option A: Placements ({pendingDPCRequests.filter(r => r.career_option === 'Placements').length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPathwayFilter('Higher Studies')}
+                      className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                        pathwayFilter === 'Higher Studies'
+                          ? 'bg-purple-600 text-white shadow-2xs'
+                          : 'text-purple-700 hover:bg-purple-50'
+                      }`}
+                    >
+                      Option B: Higher Studies ({pendingDPCRequests.filter(r => r.career_option === 'Higher Studies').length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPathwayFilter('Competitive Exams')}
+                      className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                        pathwayFilter === 'Competitive Exams'
+                          ? 'bg-amber-600 text-white shadow-2xs'
+                          : 'text-amber-700 hover:bg-amber-50'
+                      }`}
+                    >
+                      Option C: Exams ({pendingDPCRequests.filter(r => r.career_option === 'Competitive Exams').length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPathwayFilter('Entrepreneurship')}
+                      className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                        pathwayFilter === 'Entrepreneurship'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'text-emerald-700 hover:bg-emerald-50'
+                      }`}
+                    >
+                      Option E: Startup ({pendingDPCRequests.filter(r => r.career_option === 'Entrepreneurship').length})
+                    </button>
                   </div>
                 </div>
 
                 <DataTable
-                  columns={[
-                    { header: 'Request ID', accessor: 'request_number', cell: (r) => <span className="font-mono font-bold text-brand-600">{r.request_number}</span> },
-                    { header: 'Register No', accessor: 'register_number', cell: (r) => <span className="font-mono font-semibold text-slate-800">{r.register_number}</span> },
-                    { 
-                      header: 'Student Name', 
-                      accessor: 'student_name', 
-                      cell: (r) => (
-                        <div>
-                          <div className="font-bold text-slate-900">{r.student_name}</div>
-                          <div className="text-[11px] text-slate-400">{r.section} ({r.year})</div>
-                        </div>
-                      ) 
-                    },
-                    { 
-                      header: 'Career Pathway', 
-                      accessor: 'career_option', 
-                      cell: (r) => (
-                        <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${getOptionBadgeColor(r.career_option)}`}>
-                          {r.career_option || 'Not Selected'}
-                        </span>
-                      ) 
-                    },
-                    { 
-                      header: 'Key Organization / Details', 
-                      cell: (r) => (
-                        <span className="text-slate-700 font-medium text-xs">
-                          {r.company_name || r.higher_college_name || r.exam_name || r.startup_name || 'N/A'}
-                        </span>
-                      ) 
-                    },
-                    { header: 'Status', accessor: 'dpc_stage_status', cell: (r) => <Badge>{r.dpc_stage_status}</Badge> },
-                    { 
-                      header: 'Action', 
-                      cell: (r) => (
-                        <button
-                          onClick={() => {
-                            setSelectedRequest(r);
-                            setShowApprovalModal(true);
-                          }}
-                          className="px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Audit Credentials</span>
-                        </button>
-                      ) 
-                    }
-                  ]}
-                  data={pendingDPCRequests}
-                  searchPlaceholder="Search by student name, roll number, or career option..."
+                  columns={getSegregatedColumns(pathwayFilter)}
+                  data={pendingDPCRequests.filter(r => pathwayFilter === 'ALL' || r.career_option === pathwayFilter)}
+                  searchPlaceholder="Search by student name, roll number, or organization..."
                 />
               </div>
 
@@ -548,10 +758,10 @@ export const DPCDashboard = () => {
                     {selectedRequest.offer_letter_url ? (
                       <a 
                         href={selectedRequest.offer_letter_url} 
-                        download={selectedRequest.offer_letter_url.startsWith('data:') ? `${selectedRequest.student_name}_Offer_Letter` : undefined}
+                        download={isDataUrl(selectedRequest.offer_letter_url) ? `${selectedRequest.student_name}_Offer_Letter` : undefined}
                         target="_blank" 
                         rel="noreferrer"
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs"
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs cursor-pointer"
                       >
                         <FileText className="w-4 h-4" />
                         <span>View / Download Uploaded Offer Letter</span>
@@ -590,10 +800,10 @@ export const DPCDashboard = () => {
                       {selectedRequest.higher_app_form_url && (
                         <a 
                           href={selectedRequest.higher_app_form_url} 
-                          download={selectedRequest.higher_app_form_url.startsWith('data:') ? `${selectedRequest.student_name}_Application_Form` : undefined}
+                          download={isDataUrl(selectedRequest.higher_app_form_url) ? `${selectedRequest.student_name}_Application_Form` : undefined}
                           target="_blank" 
                           rel="noreferrer" 
-                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs"
+                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs cursor-pointer"
                         >
                           <FileText className="w-3.5 h-3.5" /> View / Download Application Form
                         </a>
@@ -601,15 +811,26 @@ export const DPCDashboard = () => {
                       {selectedRequest.higher_scorecard_url && (
                         <a 
                           href={selectedRequest.higher_scorecard_url} 
-                          download={selectedRequest.higher_scorecard_url.startsWith('data:') ? `${selectedRequest.student_name}_Scorecard` : undefined}
+                          download={isDataUrl(selectedRequest.higher_scorecard_url) ? `${selectedRequest.student_name}_Scorecard` : undefined}
                           target="_blank" 
                           rel="noreferrer" 
-                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs block mt-1"
+                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs block mt-1 cursor-pointer"
                         >
                           <FileText className="w-3.5 h-3.5" /> View / Download Scorecard
                         </a>
                       )}
-                      {!selectedRequest.higher_app_form_url && !selectedRequest.higher_scorecard_url && (
+                      {selectedRequest.higher_letter_url && (
+                        <a 
+                          href={selectedRequest.higher_letter_url} 
+                          download={isDataUrl(selectedRequest.higher_letter_url) ? `${selectedRequest.student_name}_Supporting_Letter` : undefined}
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs block mt-1 cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> View / Download Admission Letter / Proof
+                        </a>
+                      )}
+                      {!selectedRequest.higher_app_form_url && !selectedRequest.higher_scorecard_url && !selectedRequest.higher_letter_url && (
                         <span className="text-slate-400">No documents attached</span>
                       )}
                     </div>
@@ -639,20 +860,34 @@ export const DPCDashboard = () => {
                     <span className="text-slate-800">{selectedRequest.exam_details || 'N/A'}</span>
                   </div>
                   <div>
-                    <span className="font-semibold block text-slate-500 mb-1">Admit Card / Scorecard:</span>
-                    {selectedRequest.admit_card_url ? (
-                      <a 
-                        href={selectedRequest.admit_card_url} 
-                        download={selectedRequest.admit_card_url.startsWith('data:') ? `${selectedRequest.student_name}_Admit_Card` : undefined}
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs"
-                      >
-                        <FileText className="w-4 h-4" /> View / Download Admit Card
-                      </a>
-                    ) : (
-                      <span className="text-slate-400">No admit card attached</span>
-                    )}
+                    <span className="font-semibold block text-slate-500 mb-1">Attached Documents:</span>
+                    <div className="space-y-1">
+                      {selectedRequest.admit_card_url && (
+                        <a 
+                          href={selectedRequest.admit_card_url} 
+                          download={isDataUrl(selectedRequest.admit_card_url) ? `${selectedRequest.student_name}_Admit_Card` : undefined}
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs block cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> View / Download Scorecard / Admit Card
+                        </a>
+                      )}
+                      {selectedRequest.exam_letter_url && (
+                        <a 
+                          href={selectedRequest.exam_letter_url} 
+                          download={isDataUrl(selectedRequest.exam_letter_url) ? `${selectedRequest.student_name}_Supporting_Letter` : undefined}
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs block mt-1 cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> View / Download Supporting Letter / Proof
+                        </a>
+                      )}
+                      {!selectedRequest.admit_card_url && !selectedRequest.exam_letter_url && (
+                        <span className="text-slate-400">No documents attached</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -681,16 +916,36 @@ export const DPCDashboard = () => {
                     {selectedRequest.pitch_deck_url ? (
                       <a 
                         href={selectedRequest.pitch_deck_url} 
-                        download={selectedRequest.pitch_deck_url.startsWith('data:') ? `${selectedRequest.student_name}_Pitch_Deck` : undefined}
+                        download={isDataUrl(selectedRequest.pitch_deck_url) ? `${selectedRequest.student_name}_Pitch_Deck` : undefined}
                         target="_blank" 
                         rel="noreferrer" 
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs"
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded text-xs transition-colors flex items-center gap-1.5 inline-flex shadow-2xs cursor-pointer"
                       >
                         <FileText className="w-4 h-4" /> View / Download Pitch Deck Document
                       </a>
                     ) : (
                       <span className="text-slate-400">No deck attached</span>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* GENERAL / NON-4TH YEAR / OTHER CAREER DETAILS FALLBACK */}
+            {(!selectedRequest.career_option || !['Placements', 'Higher Studies', 'Competitive Exams', 'Entrepreneurship'].includes(selectedRequest.career_option)) && (
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-2">
+                <h5 className="font-bold text-slate-800 border-b border-slate-200 pb-1 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-slate-600" />
+                  <span>General Clearance Application Details</span>
+                </h5>
+                <div className="grid grid-cols-2 gap-3 text-slate-700">
+                  <div>
+                    <span className="font-semibold block text-slate-500">Department & Year:</span>
+                    <span className="font-bold text-slate-900">{selectedRequest.department || 'N/A'} ({selectedRequest.year || 'N/A'})</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold block text-slate-500">Submission Date:</span>
+                    <span className="font-bold text-slate-900">{selectedRequest.request_date ? new Date(selectedRequest.request_date).toLocaleDateString() : 'N/A'}</span>
                   </div>
                 </div>
               </div>

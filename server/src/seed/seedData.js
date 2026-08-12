@@ -188,8 +188,8 @@ async function seedDatabase() {
     completion_date DATETIME,
     career_option TEXT CHECK(career_option IN ('Placements','Higher Studies','Competitive Exams','Entrepreneurship')),
     company_name TEXT, job_designation TEXT, ctc_package TEXT, offer_letter_url TEXT,
-    higher_college_name TEXT, higher_degree TEXT, higher_app_form_url TEXT, higher_scorecard_url TEXT, higher_contact TEXT,
-    exam_name TEXT, exam_reg_no TEXT, admit_card_url TEXT, exam_details TEXT,
+    higher_college_name TEXT, higher_degree TEXT, higher_app_form_url TEXT, higher_scorecard_url TEXT, higher_letter_url TEXT, higher_contact TEXT,
+    exam_name TEXT, exam_reg_no TEXT, admit_card_url TEXT, exam_letter_url TEXT, exam_details TEXT,
     startup_name TEXT, business_idea TEXT, business_details TEXT, pitch_deck_url TEXT,
     resubmission_count INTEGER DEFAULT 0
   )`);
@@ -279,6 +279,60 @@ async function seedDatabase() {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  await query(`CREATE TABLE IF NOT EXISTS hall_ticket_audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_register_number TEXT NOT NULL,
+    student_name TEXT NOT NULL,
+    previous_status TEXT NOT NULL,
+    new_status TEXT NOT NULL,
+    updated_by_name TEXT NOT NULL,
+    updated_by_emp_id TEXT NOT NULL,
+    remarks TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  try {
+    await query(`ALTER TABLE nodues_requests ADD COLUMN higher_letter_url TEXT`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  try {
+    await query(`ALTER TABLE nodues_requests ADD COLUMN exam_letter_url TEXT`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  try {
+    await query(`ALTER TABLE students ADD COLUMN hall_ticket_status TEXT DEFAULT 'Not Issued'`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  try {
+    await query(`ALTER TABLE students ADD COLUMN hall_ticket_issued_by TEXT`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  try {
+    await query(`ALTER TABLE students ADD COLUMN hall_ticket_issued_by_emp_id TEXT`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  try {
+    await query(`ALTER TABLE students ADD COLUMN hall_ticket_issued_at DATETIME`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  try {
+    await query(`ALTER TABLE students ADD COLUMN hall_ticket_remarks TEXT`);
+  } catch (e) {
+    // Column already exists
+  }
+
   await query(`
     UPDATE nodues_stages
     SET status = 'Pending',
@@ -297,7 +351,9 @@ async function seedDatabase() {
   await query(`UPDATE nodues_stages SET stage_order = 3 WHERE department_name = 'Central Library'`);
   await query(`UPDATE nodues_stages SET stage_order = 4 WHERE department_name = 'Finance'`);
   await query(`UPDATE nodues_stages SET stage_order = 5 WHERE department_name = 'Faculty Advisor'`);
-  await query(`UPDATE nodues_stages SET stage_order = 6 WHERE department_name = 'HOD'`);
+  // Migration for V Praveenkumar name update
+  await query(`UPDATE faculty_advisors SET full_name = 'V Praveenkumar' WHERE employee_id = 'EMP-FA-IT-01' OR full_name LIKE '%Praveen%'`);
+  await query(`UPDATE students SET advisor_name = 'V Praveenkumar' WHERE advisor_emp_id = 'EMP-FA-IT-01' OR advisor_name LIKE '%Praveen%'`);
 
   const { syncAllRequestsProgress } = require('../utils/workflowHelper');
   await syncAllRequestsProgress();
@@ -338,7 +394,7 @@ async function seedDatabase() {
 
   // Faculty Advisors
   const faList = [
-    {empId:'EMP-FA-IT-01',name:'V.Praveen Kumar',email:'praveenkumar.v@svce.ac.in',batch:'2023-2027 (III Year IT-B)',phone:'+91 98401 11223'},
+    {empId:'EMP-FA-IT-01',name:'V Praveenkumar',email:'praveenkumar.v@svce.ac.in',batch:'2023-2027 (III Year IT-B)',phone:'+91 98401 11223'},
     {empId:'EMP-FA-IT-02',name:'N.Selvaganesh',  email:'selvaganesh.n@svce.ac.in',  batch:'2023-2027 (III Year IT-B)',phone:'+91 98402 22334'},
     {empId:'EMP-FA-IT-03',name:'V.Ranjith',      email:'ranjith.v@svce.ac.in',      batch:'2023-2027 (III Year IT-A)',phone:'+91 98403 33445'},
     {empId:'EMP-FA-IT-04',name:'S.Kavishree',    email:'kavishree.s@svce.ac.in',    batch:'2023-2027 (III Year IT-A)',phone:'+91 98404 44556'},
@@ -358,7 +414,7 @@ async function seedDatabase() {
   for (const st of y4) {
     const email = st.name.toLowerCase().replace(/[^a-z0-9]/g,'') + '@svce.ac.in';
     const sUser = await query(`INSERT OR IGNORE INTO users (username,password,role,email) VALUES (?,?,?,?)`,[st.reg,passwordHash,'student',email]);
-    await query(`INSERT OR IGNORE INTO students (user_id,register_number,id_card_number,full_name,photo_url,college_name,department,programme,batch,year,semester,section,email,phone,advisor_name,advisor_emp_id,advisor_email,advisor_phone) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[sUser.lastID,st.reg,'SVCE-IT-'+st.roll,st.name,null,'Sri Venkateswara College of Engineering','Information Technology','B.Tech IT','2022-2026','IV Year','Semester VII',st.sec,email,'+91 98410 '+st.roll+'12','V.Praveen Kumar','EMP-FA-IT-01','praveenkumar.v@svce.ac.in','+91 98401 11223']);
+    await query(`INSERT OR IGNORE INTO students (user_id,register_number,id_card_number,full_name,photo_url,college_name,department,programme,batch,year,semester,section,email,phone,advisor_name,advisor_emp_id,advisor_email,advisor_phone) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[sUser.lastID,st.reg,'SVCE-IT-'+st.roll,st.name,null,'Sri Venkateswara College of Engineering','Information Technology','B.Tech IT','2022-2026','IV Year','Semester VII',st.sec,email,'+91 98410 '+st.roll+'12','V Praveenkumar','EMP-FA-IT-01','praveenkumar.v@svce.ac.in','+91 98401 11223']);
     const req = await query(`INSERT OR IGNORE INTO nodues_requests (request_number,register_number,student_name,id_card_number,college_name,department,year,overall_status,progress_percentage,current_stage,career_option,company_name,job_designation,ctc_package,offer_letter_url,higher_college_name,higher_degree,higher_scorecard_url,higher_contact,exam_name,exam_reg_no,admit_card_url,exam_details,startup_name,business_idea,pitch_deck_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[
       'NDR-2026-F'+st.roll,st.reg,st.name,'SVCE-IT-'+st.roll,'Sri Venkateswara College of Engineering','Information Technology','IV Year','In Progress',16,'All Sections Review',
       st.opt,st.comp||null,st.desig||null,st.ctc||null,st.link||null,
@@ -396,7 +452,7 @@ async function seedDatabase() {
   for (const st of selva) await ins3(st,'N.Selvaganesh','EMP-FA-IT-02','selvaganesh.n@svce.ac.in','+91 98402 22334','Sec-B');
 
   const praveen=[{roll:'74',name:'Ritika S',reg:'IT2025074'},{roll:'75',name:'Rohinidevi',reg:'IT2025075'},{roll:'76',name:'Sanjeev Sriram',reg:'IT2025076'},{roll:'77',name:'Samiksha',reg:'IT2025077'},{roll:'78',name:'Sandhiya G',reg:'IT2025078'},{roll:'79',name:'Sandhiya P',reg:'IT2025079'},{roll:'80',name:'Sanjay',reg:'IT2025080'},{roll:'81',name:'Saranyadevi',reg:'IT2025081'},{roll:'82',name:'Sarveshvaran',reg:'IT2025082'},{roll:'83',name:'Sashwanth',reg:'IT2025083'},{roll:'84',name:'Sharvesh CM',reg:'IT2025084'},{roll:'85',name:'Siddharth Santhosh kumar',reg:'IT2025085'},{roll:'86',name:'Sivaprasath',reg:'IT2025086'},{roll:'87',name:'Srivarshini',reg:'IT2025087'},{roll:'88',name:'Sruthilaya',reg:'IT2025088'},{roll:'89',name:'Surjithkumar',reg:'IT2025089'},{roll:'90',name:'Swetha',reg:'IT2025090'},{roll:'91',name:'Thamaraiselvi',reg:'IT2025091'},{roll:'92',name:'Tharun',reg:'IT2025092'},{roll:'93',name:'Thaufiq Abdul Kaadher',reg:'IT2025093'},{roll:'94',name:'Vaishnavi',reg:'IT2025094'},{roll:'95',name:'Varshan V Chari',reg:'IT2025096'},{roll:'97',name:'Vivek A',reg:'IT2025097'},{roll:'98',name:'Yogi Krishnan',reg:'IT2025098'}];
-  for (const st of praveen) await ins3(st,'V.Praveen Kumar','EMP-FA-IT-01','praveenkumar.v@svce.ac.in','+91 98401 11223','Sec-B');
+  for (const st of praveen) await ins3(st,'V Praveenkumar','EMP-FA-IT-01','praveenkumar.v@svce.ac.in','+91 98401 11223','Sec-B');
 
   // Books
   const booksData=[
