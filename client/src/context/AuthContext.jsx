@@ -1,22 +1,59 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import api from '../services/api';
+import api, { getClientDeviceMetadata } from '../services/api';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('nodues_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('nodues_user');
+      if (!saved || saved === 'undefined' || saved === 'null') {
+        localStorage.removeItem('nodues_user');
+        return null;
+      }
+      return JSON.parse(saved);
+    } catch (err) {
+      console.warn('Invalid user stored in localStorage, resetting:', err);
+      localStorage.removeItem('nodues_user');
+      localStorage.removeItem('nodues_token');
+      return null;
+    }
   });
-  const [token, setToken] = useState(() => localStorage.getItem('nodues_token') || null);
+  const [token, setToken] = useState(() => {
+    const savedToken = localStorage.getItem('nodues_token');
+    if (!savedToken || savedToken === 'undefined' || savedToken === 'null') {
+      localStorage.removeItem('nodues_token');
+      return null;
+    }
+    return savedToken;
+  });
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+      setToken(null);
+      localStorage.removeItem('nodues_token');
+      localStorage.removeItem('nodues_user');
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, []);
 
   const login = async (username, password) => {
     setLoading(true);
     setAuthError(null);
     try {
-      const response = await api.post('/auth/login', { username, password });
+      const meta = getClientDeviceMetadata();
+      const response = await api.post('/auth/login', { 
+        username, 
+        password,
+        location: meta.location,
+        deviceName: meta.deviceName,
+        deviceType: meta.deviceType
+      });
       if (response.data.success) {
         const { token, user } = response.data;
         setToken(token);

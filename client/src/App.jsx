@@ -1,6 +1,11 @@
 import React from 'react';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AlertProvider } from './context/AlertContext';
+import { PWAProvider } from './context/PWAContext';
+import InstallAppModal from './components/common/InstallAppModal';
+import InstallAppBanner from './components/common/InstallAppBanner';
+import PWAStatusBanners from './components/common/PWAStatusBanners';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
 import LibraryDashboard from './pages/LibraryDashboard';
@@ -50,12 +55,20 @@ const MainAppContent = () => {
 
 export function App() {
   return (
-    <AlertProvider>
-      <AuthProvider>
-        <MainAppContent />
-      </AuthProvider>
-    </AlertProvider>
+    <ErrorBoundary>
+      <PWAProvider>
+        <AlertProvider>
+          <AuthProvider>
+            <PWAStatusBanners />
+            <MainAppContent />
+            <InstallAppModal />
+            <InstallAppBanner />
+          </AuthProvider>
+        </AlertProvider>
+      </PWAProvider>
+    </ErrorBoundary>
   );
 }
 
 export default App;
+

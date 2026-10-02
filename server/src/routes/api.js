@@ -9,6 +9,7 @@ const hodController = require('../controllers/hodController');
 const dpcController = require('../controllers/dpcController');
 const financeController = require('../controllers/financeController');
 const mainLibraryController = require('../controllers/mainLibraryController');
+const auditLogController = require('../controllers/auditLogController');
 
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
@@ -16,6 +17,10 @@ const { handleSSEConnection } = require('../utils/sse');
 
 // Server-Sent Events (SSE) Real-Time Stream Endpoint
 router.get('/sse', handleSSEConnection);
+
+// System Audit Logs (Available across all 7 dashboards with device name, device type, location)
+router.get('/audit-logs', authenticateToken, auditLogController.getAuditLogs);
+router.post('/audit-logs', authenticateToken, auditLogController.recordClientAction);
 
 // Authentication Routes
 router.post('/auth/login', authController.login);

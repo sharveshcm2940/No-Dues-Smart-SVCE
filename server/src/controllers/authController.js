@@ -2,6 +2,7 @@ const { query, getOne } = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../middleware/auth');
+const { logAuditEvent } = require('../utils/auditLogger');
 
 exports.login = async (req, res) => {
   try {
@@ -53,6 +54,20 @@ exports.login = async (req, res) => {
       JWT_SECRET,
       { expiresIn: '12h' }
     );
+
+    // Record audit log for login
+    await logAuditEvent({
+      req,
+      user: {
+        id: user.id,
+        username: user.username,
+        full_name: profileData?.full_name || user.username,
+        role: user.role
+      },
+      action: 'USER_LOGIN',
+      details: `User authenticated successfully into ${user.role} workspace`,
+      module: 'Authentication'
+    });
 
     return res.json({
       success: true,
@@ -125,6 +140,14 @@ exports.updatePassword = async (req, res) => {
 
     const newHash = await bcrypt.hash(newPassword, 10);
     await query('UPDATE users SET password = ? WHERE id = ?', [newHash, req.user.id]);
+
+    await logAuditEvent({
+      req,
+      user: req.user,
+      action: 'PASSWORD_UPDATED',
+      details: 'Account password changed successfully',
+      module: 'Authentication'
+    });
 
     return res.json({ success: true, message: 'Password updated successfully.' });
   } catch (error) {

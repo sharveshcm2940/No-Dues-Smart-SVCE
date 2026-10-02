@@ -176,7 +176,7 @@ exports.processNoDuesAction = async (req, res) => {
     // Update Department Library Stage
     await query(
       `UPDATE nodues_stages 
-       SET status = ?, approved_by = ?, remarks = ?, updated_at = datetime('now')
+       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
        WHERE request_id = ? AND department_name = 'Department Library'`,
       [newStatus, approverName, remarks || (action === 'Approve' ? 'Department Library clearance granted.' : 'Put on hold by Department Library.'), requestId]
     );
@@ -405,7 +405,7 @@ exports.updateComplaintStatus = async (req, res) => {
     }
 
     await query(
-      `UPDATE complaints SET status = ?, reply = ?, assigned_to = ?, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE complaints SET status = ?, reply = ?, assigned_to = ?, updated_at = NOW() WHERE id = ?`,
       [status, reply || cmp.reply, assigned_to || cmp.assigned_to, id]
     );
 
@@ -667,7 +667,7 @@ exports.bulkApproveNoDues = async (req, res) => {
 
       await query(
         `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Department Library.', updated_at = datetime('now') 
+         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Department Library.', updated_at = NOW() 
          WHERE request_id = ? AND department_name = 'Department Library'`,
         [approverName, item.request_id]
       );
@@ -727,7 +727,7 @@ exports.updateLibraryMetrics = async (req, res) => {
     if (existing) {
       await query(
         `UPDATE library_metrics 
-         SET total_books = ?, available_books = ?, borrowed_books = ?, pending_returns = ?, is_custom = 1, updated_at = datetime('now')
+         SET total_books = ?, available_books = ?, borrowed_books = ?, pending_returns = ?, is_custom = 1, updated_at = NOW()
          WHERE id = 1`,
         [t, a, b, p]
       );

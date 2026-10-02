@@ -115,7 +115,7 @@ exports.processDPCAction = async (req, res) => {
     // Update DPC Stage
     await query(
       `UPDATE nodues_stages 
-       SET status = ?, approved_by = ?, remarks = ?, updated_at = datetime('now')
+       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
        WHERE request_id = ? AND department_name = 'DPC'`,
       [newStatus, approverName, remarks || `Career Pathway (${request.career_option || 'General'}) verified and cleared by DPC.`, requestId]
     );
@@ -187,7 +187,7 @@ exports.bulkApproveDPC = async (req, res) => {
     for (const item of pendingStages) {
       await query(
         `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by DPC Placement Officer.', updated_at = datetime('now') 
+         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by DPC Placement Officer.', updated_at = NOW() 
          WHERE request_id = ? AND department_name = 'DPC'`,
         [approverName, item.request_id]
       );

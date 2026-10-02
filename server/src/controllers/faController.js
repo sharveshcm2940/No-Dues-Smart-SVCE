@@ -122,7 +122,7 @@ exports.processFAAction = async (req, res) => {
     // Update Faculty Advisor Stage
     await query(
       `UPDATE nodues_stages 
-       SET status = ?, approved_by = ?, remarks = ?, updated_at = datetime('now')
+       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
        WHERE request_id = ? AND department_name = 'Faculty Advisor'`,
       [newStatus, approverName, remarks || 'Faculty Advisor approval granted.', requestId]
     );
@@ -202,7 +202,7 @@ exports.bulkApproveAdvisees = async (req, res) => {
     for (const item of pendingStages) {
       await query(
         `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Faculty Advisor.', updated_at = datetime('now') 
+         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Faculty Advisor.', updated_at = NOW() 
          WHERE request_id = ? AND department_name = 'Faculty Advisor'`,
         [approverName, item.request_id]
       );
@@ -311,7 +311,7 @@ exports.updateHallTicketStatus = async (req, res) => {
        SET hall_ticket_status = ?,
            hall_ticket_issued_by = ?,
            hall_ticket_issued_by_emp_id = ?,
-           hall_ticket_issued_at = datetime('now'),
+           hall_ticket_issued_at = NOW(),
            hall_ticket_remarks = ?
        WHERE register_number = ?`,
       [hall_ticket_status, advisor.full_name, empId, remarks || null, register_number]
@@ -321,7 +321,7 @@ exports.updateHallTicketStatus = async (req, res) => {
     await query(
       `INSERT INTO hall_ticket_audit_logs (
         student_register_number, student_name, previous_status, new_status, updated_by_name, updated_by_emp_id, remarks, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
       [register_number, student.full_name, prevStatus, hall_ticket_status, advisor.full_name, empId, remarks || null]
     );
 

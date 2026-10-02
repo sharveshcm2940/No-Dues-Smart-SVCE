@@ -129,7 +129,7 @@ exports.processFinanceAction = async (req, res) => {
     // Update Finance Stage
     await query(
       `UPDATE nodues_stages 
-       SET status = ?, approved_by = ?, remarks = ?, updated_at = datetime('now')
+       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
        WHERE request_id = ? AND department_name = 'Finance'`,
       [newStatus, approverName, remarks || 'Tuition and laboratory accounts cleared.', requestId]
     );
@@ -208,7 +208,7 @@ exports.bulkApproveFinance = async (req, res) => {
     for (const item of pendingRequests) {
       await query(
         `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Finance Section.', updated_at = datetime('now')
+         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Finance Section.', updated_at = NOW()
          WHERE request_id = ? AND department_name = 'Finance'`,
         [approverName, item.request_id]
       );

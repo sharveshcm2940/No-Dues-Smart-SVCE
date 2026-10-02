@@ -1,5 +1,5 @@
 /**
- * Safely parses any date string (including SQLite UTC strings 'YYYY-MM-DD HH:MM:SS')
+ * Safely parses any date string (including MySQL UTC strings 'YYYY-MM-DD HH:MM:SS')
  * and returns a JavaScript Date object in the user's local timezone.
  */
 export const parseLocalDate = (dateInput) => {
@@ -7,7 +7,7 @@ export const parseLocalDate = (dateInput) => {
   let str = String(dateInput).trim();
   if (!str) return null;
 
-  // Format SQLite 'YYYY-MM-DD HH:MM:SS' to ISO 'YYYY-MM-DDTHH:MM:SS'
+  // Format MySQL 'YYYY-MM-DD HH:MM:SS' to ISO 'YYYY-MM-DDTHH:MM:SS'
   if (str.includes(' ') && !str.includes('T')) {
     str = str.replace(' ', 'T');
   }

@@ -51,9 +51,12 @@ if (fs.existsSync(clientBuildPath)) {
   console.log(`📦 Enterprise Production Mode: Serving bundled client from ${clientBuildPath}`);
 }
 
+const { ensureReady } = require('./config/db');
+
 // Start Server & Initialize Database
 async function startServer() {
   try {
+    await ensureReady();
     await seedDatabase();
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`=======================================================`);

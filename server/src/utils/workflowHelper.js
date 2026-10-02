@@ -34,7 +34,7 @@ async function updateRequestProgress(requestId) {
     if (!isFourthYear && dpcStage && dpcStage.status === 'Pending') {
       await query(
         `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = 'System (Auto-Cleared)', remarks = 'Exempted for non-final year student.', updated_at = datetime('now')
+         SET status = 'Approved', approved_by = 'System (Auto-Cleared)', remarks = 'Exempted for non-final year student.', updated_at = NOW()
          WHERE id = ?`,
         [dpcStage.id]
       );
@@ -82,7 +82,7 @@ async function updateRequestProgress(requestId) {
       if (financeStage) {
         if (financeStage.status === 'Locked') {
           await query(
-            `UPDATE nodues_stages SET status = 'Pending', updated_at = datetime('now') WHERE id = ?`,
+            `UPDATE nodues_stages SET status = 'Pending', updated_at = NOW() WHERE id = ?`,
             [financeStage.id]
           );
           financeStage.status = 'Pending';
@@ -108,7 +108,7 @@ async function updateRequestProgress(requestId) {
           if (faStage) {
             if (faStage.status === 'Locked') {
               await query(
-                `UPDATE nodues_stages SET status = 'Pending', updated_at = datetime('now') WHERE id = ?`,
+                `UPDATE nodues_stages SET status = 'Pending', updated_at = NOW() WHERE id = ?`,
                 [faStage.id]
               );
               faStage.status = 'Pending';
@@ -137,7 +137,7 @@ async function updateRequestProgress(requestId) {
               if (hodStage) {
                 if (hodStage.status === 'Locked') {
                   await query(
-                    `UPDATE nodues_stages SET status = 'Pending', updated_at = datetime('now') WHERE id = ?`,
+                    `UPDATE nodues_stages SET status = 'Pending', updated_at = NOW() WHERE id = ?`,
                     [hodStage.id]
                   );
                   hodStage.status = 'Pending';
@@ -178,7 +178,7 @@ async function updateRequestProgress(requestId) {
       }
       await query(
         `UPDATE nodues_requests 
-         SET overall_status = 'Approved', progress_percentage = 100, current_stage = 'Completed', certificate_number = ?, completion_date = datetime('now')
+         SET overall_status = 'Approved', progress_percentage = 100, current_stage = 'Completed', certificate_number = ?, completion_date = NOW()
          WHERE id = ?`,
         [certNo, requestId]
       );
@@ -207,14 +207,32 @@ async function updateRequestProgress(requestId) {
 /**
  * Logs an audit entry for tracking approval, rejection, hold, or student re-submission history.
  */
-async function logAuditEntry({ requestId, departmentName, actionType, actorName, actorRole, statusAfter, remarks, studentComment, attachmentUrl }) {
+async function logAuditEntry({ requestId, departmentName, actionType, actorName, actorRole, statusAfter, remarks, studentComment, attachmentUrl, req = null }) {
   try {
     await query(
       `INSERT INTO nodues_audit_logs (
         request_id, department_name, action_type, actor_name, actor_role, status_after, remarks, student_comment, attachment_url, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [requestId, departmentName, actionType, actorName, actorRole, statusAfter, remarks || null, studentComment || null, attachmentUrl || null]
     );
+
+    // Mirror to system_audit_logs with device name, device type, location and IP address
+    try {
+      const { logAuditEvent } = require('./auditLogger');
+      await logAuditEvent({
+        req,
+        user: {
+          username: actorName || 'STAFF',
+          full_name: actorName || 'Institutional Staff',
+          role: actorRole || 'staff'
+        },
+        action: actionType || 'STAGE_ACTION',
+        details: `${departmentName}: Status '${statusAfter}' for Request #${requestId}. ${remarks || ''}`.trim(),
+        module: departmentName || 'No-Dues Clearance'
+      });
+    } catch (auditErr) {
+      console.warn('System audit log mirror error:', auditErr.message);
+    }
   } catch (err) {
     console.error('Log Audit Entry Error:', err);
   }

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { initLocationDetection } from '../services/api';
 import SVCELogo from '../components/common/SVCELogo';
 import { 
   ShieldCheck, 
@@ -19,6 +20,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import Modal from '../components/common/Modal';
+import InstallAppButton from '../components/common/InstallAppButton';
 
 export const LoginPage = () => {
   const { login, loading, authError } = useAuth();
@@ -29,11 +31,20 @@ export const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [formError, setFormError] = useState('');
+  const [mobileTab, setMobileTab] = useState('login');
+  const [lastSelectedPreset, setLastSelectedPreset] = useState('');
 
-  const handlePresetSelect = (presetUser) => {
+  // Proactively acquire high-accuracy location on login page mount
+  useEffect(() => {
+    initLocationDetection();
+  }, []);
+
+  const handlePresetSelect = (presetUser, presetTitle) => {
     setUsername(presetUser);
     setPassword('password123');
     setFormError('');
+    setLastSelectedPreset(presetTitle || presetUser);
+    setMobileTab('login');
   };
 
   const handleSubmit = async (e) => {
@@ -67,38 +78,81 @@ export const LoginPage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between py-8 px-4 sm:px-6 lg:px-8 font-sans selection:bg-[#1d4ed8] selection:text-white">
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between py-6 px-3 sm:py-8 sm:px-6 lg:px-8 font-sans selection:bg-[#1d4ed8] selection:text-white">
       
-      {/* Top SVCE College Branding Header with SVCE Blue & Orange Accents */}
+      {/* Top SVCE College Branding Header */}
       <div className="max-w-4xl mx-auto w-full text-center">
-        <div className="flex justify-center mb-4">
-          <SVCELogo className="h-24 sm:h-28" />
+        <div className="flex justify-center mb-2 sm:mb-4">
+          <SVCELogo className="h-16 sm:h-24 md:h-28 transition-all" />
         </div>
 
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-white border-l-4 border-l-svceOrange border border-slate-200 rounded-r-full text-brand-700 text-xs font-bold uppercase tracking-wider mb-2 shadow-2xs">
-          <Building2 className="w-3.5 h-3.5 text-svceOrange" />
-          <span>DEPARTMENT OF INFORMATION TECHNOLOGY</span>
-        </div>
-
-        <h2 className="text-base sm:text-lg font-bold text-slate-800 tracking-tight">
-          No-Dues Clearance Management & Institutional ERP Portal
+        <h2 className="text-sm sm:text-base md:text-lg font-bold text-slate-800 tracking-tight max-w-xl mx-auto px-2 mt-2">
+          No-Dues Clearance Management
         </h2>
       </div>
 
       {/* Main Single Login Split Container */}
-      <div className="max-w-4xl mx-auto w-full my-6">
-        <div className="bg-white shadow-xs rounded-xl border border-slate-200 overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+      <div className="max-w-4xl mx-auto w-full my-3 sm:my-6">
+        
+        {/* Mobile Segmented Switch (< lg) */}
+        <div className="lg:hidden flex p-1 bg-slate-200/80 rounded-2xl mb-3 shadow-inner text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => setMobileTab('login')}
+            className={`flex-1 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              mobileTab === 'login' 
+                ? 'bg-white text-blue-700 shadow-sm' 
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>Sign In</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('demo')}
+            className={`flex-1 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              mobileTab === 'demo' 
+                ? 'bg-white text-blue-700 shadow-sm' 
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-svceOrange" />
+            <span>Demo Accounts ({quickPresets.length})</span>
+          </button>
+        </div>
+
+        {/* Selected Preset Confirmation Banner (visible when preset chosen on mobile) */}
+        {lastSelectedPreset && mobileTab === 'login' && (
+          <div className="lg:hidden mb-2.5 p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs flex items-center justify-between animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+              <span className="truncate">Loaded: <strong>{lastSelectedPreset}</strong></span>
+            </div>
+            <button 
+              type="button"
+              onClick={() => setLastSelectedPreset('')} 
+              className="text-blue-500 hover:text-blue-800 text-[10px] font-bold underline"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
+        <div className="bg-white shadow-xl shadow-slate-200/60 rounded-2xl sm:rounded-3xl border border-slate-200/80 overflow-hidden grid grid-cols-1 lg:grid-cols-12">
           
           {/* Left Column: Unified Login Form (7 Cols) */}
-          <div className="lg:col-span-7 p-6 sm:p-8 border-b lg:border-b-0 lg:border-r border-slate-200 space-y-6">
+          <div className={`lg:col-span-7 p-5 sm:p-8 border-b lg:border-b-0 lg:border-r border-slate-200/80 space-y-5 ${
+            mobileTab === 'demo' ? 'hidden lg:block' : 'block'
+          }`}>
             
-            <div className="border-b border-slate-100 pb-4">
+            <div className="border-b border-slate-100 pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-5 bg-svceOrange rounded-full"></span>
                   <h3 className="text-base font-bold text-slate-900 tracking-tight">Sign In to SVCE ERP</h3>
                 </div>
-                <span className="text-[11px] font-bold text-brand-700 bg-brand-50 border border-brand-200 px-2.5 py-0.5 rounded-full">
+                <span className="text-[10px] sm:text-[11px] font-bold text-brand-700 bg-brand-50 border border-brand-200 px-2.5 py-0.5 rounded-full">
                   Single Login
                 </span>
               </div>
@@ -109,14 +163,14 @@ export const LoginPage = () => {
 
             {/* Error Alert Box */}
             {(formError || authError) && (
-              <div className="p-3.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-2.5 animate-in fade-in">
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2.5 animate-in fade-in">
                 <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
                 <span className="font-semibold">{formError || authError}</span>
               </div>
             )}
 
             {/* Form */}
-            <form className="space-y-5" onSubmit={handleSubmit}>
+            <form className="space-y-4" onSubmit={handleSubmit}>
               
               {/* Register Number / Employee ID */}
               <div>
@@ -124,13 +178,13 @@ export const LoginPage = () => {
                   Register Number / Employee ID *
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="e.g. IT2024001 or EMP-HOD-IT-01"
-                    className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 sm:py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 transition-all"
                     required
                   />
                 </div>
@@ -152,19 +206,19 @@ export const LoginPage = () => {
                 </div>
 
                 <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••••••"
-                    className="w-full pl-9 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 transition-all"
+                    className="w-full pl-10 pr-10 py-2.5 sm:py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 transition-all"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -172,7 +226,7 @@ export const LoginPage = () => {
               </div>
 
               {/* Remember Me & Security */}
-              <div className="flex items-center justify-between text-xs pt-1">
+              <div className="flex items-center justify-between text-xs pt-0.5">
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -180,7 +234,7 @@ export const LoginPage = () => {
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="rounded text-brand-600 focus:ring-brand-600 h-4 w-4"
                   />
-                  <span className="text-slate-600 font-medium">Keep session logged in</span>
+                  <span className="text-slate-600 font-medium text-xs">Keep session logged in</span>
                 </label>
 
                 <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
@@ -189,34 +243,41 @@ export const LoginPage = () => {
                 </span>
               </div>
 
-              {/* Submit Button in SVCE Royal Blue */}
+              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-lg shadow-xs text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-600 transition-all disabled:opacity-60 cursor-pointer"
+                className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-xl shadow-md shadow-blue-600/20 text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-600 transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer"
               >
                 <ShieldCheck className="w-4 h-4 text-svceOrange" />
                 <span>{loading ? 'Authenticating Credentials...' : 'Sign In to SVCE ERP Portal'}</span>
               </button>
 
+              {/* Install / Download App CTA */}
+              <div className="pt-2 border-t border-slate-100">
+                <InstallAppButton variant="login" />
+              </div>
+
             </form>
           </div>
 
           {/* Right Column: Quick Test Presets Grid (5 Cols) */}
-          <div className="lg:col-span-5 p-6 sm:p-8 bg-slate-50/70 space-y-4">
+          <div className={`lg:col-span-5 p-5 sm:p-8 bg-slate-50/70 space-y-4 ${
+            mobileTab === 'login' ? 'hidden lg:block' : 'block'
+          }`}>
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
                 <Sparkles className="w-4 h-4 text-svceOrange" />
                 <span>Test Account Quick Fill</span>
               </div>
-              <span className="text-[10px] text-slate-400 font-mono">Click to select</span>
+              <span className="text-[10px] text-slate-400 font-mono">Tap to select</span>
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
               Select any account below to test its role-specific dashboard access:
             </p>
 
-            <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
               {quickPresets.map((p) => {
                 const Icon = p.icon;
                 const isSelected = username === p.id;
@@ -224,24 +285,24 @@ export const LoginPage = () => {
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => handlePresetSelect(p.id)}
-                    className={`w-full p-2.5 rounded-lg border text-left transition-all flex items-center justify-between ${
+                    onClick={() => handlePresetSelect(p.id, `${p.title} (${p.role})`)}
+                    className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between active:scale-[0.98] ${
                       isSelected
                         ? 'border-brand-600 bg-white ring-2 ring-brand-200 shadow-xs'
                         : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-xs'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-1.5 rounded-md bg-slate-100 text-slate-600">
+                    <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                      <div className="p-1.5 rounded-lg bg-slate-100 text-slate-600 flex-shrink-0">
                         <Icon className="w-3.5 h-3.5" />
                       </div>
-                      <div>
-                        <p className="font-bold text-slate-800 text-xs leading-tight">{p.title}</p>
-                        <p className="text-[11px] text-slate-500 leading-tight">{p.subtitle}</p>
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-800 text-xs leading-tight truncate">{p.title}</p>
+                        <p className="text-[10px] text-slate-500 leading-tight truncate">{p.subtitle}</p>
                       </div>
                     </div>
 
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${p.color}`}>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border flex-shrink-0 ${p.color}`}>
                       {p.role}
                     </span>
                   </button>

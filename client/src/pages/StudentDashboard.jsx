@@ -222,11 +222,22 @@ export const StudentDashboard = () => {
   }
 
   const {
-    profile = null,
-    metrics = { totalBorrowed: 0, activeBooks: 0, unpaidFines: 0 },
+    profile: rawProfile = null,
+    metrics: rawMetrics = null,
     activeRequest = null,
     stages = []
   } = dashboardData || {};
+
+  const profile = rawProfile || {};
+  const metrics = rawMetrics || { 
+    totalBorrowed: 0, 
+    activeBooks: 0, 
+    unpaidFines: 0, 
+    pendingBooks: 0, 
+    currentFine: 0, 
+    overallStatus: 'Pending', 
+    deptLibraryStatus: 'Pending' 
+  };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
@@ -235,51 +246,55 @@ export const StudentDashboard = () => {
       <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto">
         <Sidebar role="student" activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <main className="flex-1 p-3.5 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
+        <main className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto pb-24 md:pb-8">
           
           {/* TAB 1: OVERVIEW DASHBOARD */}
           {activeTab === 'dashboard' && (
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               
               {/* Welcome Card Banner */}
-              <div className="bg-gradient-to-r from-brand-700 to-brand-900 rounded-lg p-6 text-white shadow-xs">
-                <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="bg-gradient-to-r from-blue-700 via-blue-800 to-indigo-900 rounded-2xl sm:rounded-3xl p-5 sm:p-6 text-white shadow-md shadow-blue-900/10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-brand-200">
-                      STUDENT clearance DESK
+                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-blue-200 bg-white/10 px-2.5 py-0.5 rounded-full inline-block mb-1.5 backdrop-blur-xs">
+                      STUDENT CLEARANCE DESK
                     </span>
-                    <h2 className="text-xl font-bold tracking-tight mt-0.5">
-                      Welcome back, {profile.full_name}!
+                    <h2 className="text-lg sm:text-xl font-bold tracking-tight">
+                      Welcome back, {profile.full_name || 'Student'}!
                     </h2>
-                    <p className="text-xs text-brand-100 mt-1 max-w-2xl leading-relaxed">
-                      Department of Information Technology | Programme: {profile.programme} ({profile.batch}) | Current: {profile.year}, {profile.semester} ({profile.section})
+                    <p className="text-xs text-blue-100 mt-1 max-w-2xl leading-relaxed">
+                      Department of Information Technology | Programme: {profile.programme || 'B.Tech IT'} ({profile.batch || '2022-2026'}) | Current: {profile.year || 'N/A'}, {profile.semester || 'N/A'} ({profile.section || 'A'})
                     </p>
                   </div>
 
-                  <div className="bg-white/10 backdrop-blur-xs p-3 rounded-lg border border-white/20 text-right">
-                    <p className="text-[11px] text-brand-200 font-medium">Clearance Status</p>
+                  <div className="bg-white/10 backdrop-blur-sm p-3.5 rounded-xl border border-white/20 sm:text-right self-start sm:self-auto min-w-[140px]">
+                    <p className="text-[11px] text-blue-200 font-medium">Clearance Status</p>
                     <p className="text-sm font-extrabold uppercase tracking-wide text-white mt-0.5">
-                      {metrics.overallStatus}
+                      {metrics.overallStatus || 'Pending'}
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* 3 ERP Summary Metric Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between text-slate-500 mb-2">
                     <span className="text-xs font-bold uppercase tracking-wider">Pending Returns</span>
-                    <Clock className="w-4 h-4 text-amber-600" />
+                    <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
+                      <Clock className="w-4 h-4" />
+                    </div>
                   </div>
                   <p className="text-2xl font-extrabold text-slate-900">{metrics.pendingBooks}</p>
                   <p className="text-[11px] text-slate-500 mt-1">Books to be returned</p>
                 </div>
 
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between text-slate-500 mb-2">
                     <span className="text-xs font-bold uppercase tracking-wider">Current Fine</span>
-                    <IndianRupee className="w-4 h-4 text-red-600" />
+                    <div className={`p-2 rounded-xl ${metrics.currentFine > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                      <IndianRupee className="w-4 h-4" />
+                    </div>
                   </div>
                   <p className={`text-2xl font-extrabold ${metrics.currentFine > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                     ₹{metrics.currentFine}
@@ -287,10 +302,12 @@ export const StudentDashboard = () => {
                   <p className="text-[11px] text-slate-500 mt-1">Library overdue fines</p>
                 </div>
 
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between text-slate-500 mb-2">
                     <span className="text-xs font-bold uppercase tracking-wider">Dept Library Status</span>
-                    <ShieldCheck className="w-4 h-4 text-brand-600" />
+                    <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
                   </div>
                   <div className="mt-1">
                     <Badge>{metrics.deptLibraryStatus}</Badge>
@@ -300,10 +317,10 @@ export const StudentDashboard = () => {
               </div>
 
               {/* Profile Card & Faculty Advisor Details */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                 
                 {/* Student Profile Card */}
-                <div className="lg:col-span-2 bg-white p-6 rounded-lg border border-slate-200 shadow-xs space-y-4">
+                <div className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
                   <h3 className="text-sm font-bold text-slate-800 tracking-tight pb-3 border-b border-slate-100 flex items-center gap-2">
                     <User className="w-4 h-4 text-brand-600" />
                     <span>Academic Student Profile</span>
@@ -311,48 +328,48 @@ export const StudentDashboard = () => {
 
                   <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
                     <div className="w-16 h-16 rounded-lg bg-brand-50 border border-brand-200 flex-shrink-0 flex items-center justify-center font-black text-brand-700 text-xl shadow-2xs">
-                      {profile.full_name.charAt(0)}
+                      {profile?.full_name ? profile.full_name.charAt(0) : 'S'}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs flex-1">
                       <div>
                         <span className="text-slate-400 font-semibold uppercase text-[10px]">Student Name</span>
-                        <p className="font-bold text-slate-900 text-sm">{profile.full_name}</p>
+                        <p className="font-bold text-slate-900 text-sm">{profile?.full_name || 'Student'}</p>
                       </div>
 
                       <div>
                         <span className="text-slate-400 font-semibold uppercase text-[10px]">Register Number</span>
-                        <p className="font-mono font-bold text-brand-600">{profile.register_number}</p>
+                        <p className="font-mono font-bold text-brand-600">{profile?.register_number || 'N/A'}</p>
                       </div>
 
                       <div>
                         <span className="text-slate-400 font-semibold uppercase text-[10px]">ID Card Number</span>
-                        <p className="font-mono font-semibold text-slate-800">{profile.id_card_number}</p>
+                        <p className="font-mono font-semibold text-slate-800">{profile?.id_card_number || 'N/A'}</p>
                       </div>
 
                       <div>
                         <span className="text-slate-400 font-semibold uppercase text-[10px]">Department</span>
-                        <p className="font-semibold text-slate-800">{profile.department}</p>
+                        <p className="font-semibold text-slate-800">{profile?.department || 'Information Technology'}</p>
                       </div>
 
                       <div>
                         <span className="text-slate-400 font-semibold uppercase text-[10px]">Batch / Academic Year</span>
-                        <p className="font-semibold text-slate-800">{profile.batch} ({profile.year})</p>
+                        <p className="font-semibold text-slate-800">{profile?.batch || '2022-2026'} ({profile?.year || 'N/A'})</p>
                       </div>
 
                       <div>
                         <span className="text-slate-400 font-semibold uppercase text-[10px]">Semester & Section</span>
-                        <p className="font-semibold text-slate-800">{profile.semester} - {profile.section}</p>
+                        <p className="font-semibold text-slate-800">{profile?.semester || 'N/A'} - {profile?.section || 'N/A'}</p>
                       </div>
 
                       <div>
                         <span className="text-slate-400 font-semibold uppercase text-[10px]">Email Address</span>
-                        <p className="font-medium text-slate-700">{profile.email}</p>
+                        <p className="font-medium text-slate-700">{profile?.email || 'N/A'}</p>
                       </div>
 
                       <div>
                         <span className="text-slate-400 font-semibold uppercase text-[10px]">Contact Phone</span>
-                        <p className="font-medium text-slate-700">{profile.phone}</p>
+                        <p className="font-medium text-slate-700">{profile?.phone || 'N/A'}</p>
                       </div>
                     </div>
                   </div>
@@ -368,22 +385,22 @@ export const StudentDashboard = () => {
                   <div className="space-y-3 text-xs">
                     <div>
                       <span className="text-slate-400 font-semibold uppercase text-[10px]">Advisor Name</span>
-                      <p className="font-bold text-slate-900">{profile.advisor_name}</p>
+                      <p className="font-bold text-slate-900">{profile?.advisor_name || 'Assigned Faculty Advisor'}</p>
                     </div>
 
                     <div>
                       <span className="text-slate-400 font-semibold uppercase text-[10px]">Employee ID</span>
-                      <p className="font-mono font-semibold text-slate-700">{profile.advisor_emp_id}</p>
+                      <p className="font-mono font-semibold text-slate-700">{profile?.advisor_emp_id || 'N/A'}</p>
                     </div>
 
                     <div>
                       <span className="text-slate-400 font-semibold uppercase text-[10px]">Email Address</span>
-                      <p className="font-medium text-slate-700">{profile.advisor_email}</p>
+                      <p className="font-medium text-slate-700">{profile?.advisor_email || 'N/A'}</p>
                     </div>
 
                     <div>
                       <span className="text-slate-400 font-semibold uppercase text-[10px]">Phone Number</span>
-                      <p className="font-medium text-slate-700">{profile.advisor_phone}</p>
+                      <p className="font-medium text-slate-700">{profile?.advisor_phone || 'N/A'}</p>
                     </div>
 
                     <div className="pt-2">
@@ -610,6 +627,7 @@ export const StudentDashboard = () => {
 
             </div>
           )}
+
 
         </main>
       </div>

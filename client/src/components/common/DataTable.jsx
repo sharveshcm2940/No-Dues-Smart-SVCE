@@ -38,13 +38,13 @@ export const DataTable = ({
   );
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
       
       {/* Search & Filter Header Bar */}
-      <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3 flex-1 min-w-[240px]">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <div className="p-3.5 sm:p-4 border-b border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 w-full">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchTerm}
@@ -53,20 +53,20 @@ export const DataTable = ({
                 setCurrentPage(1);
               }}
               placeholder={searchPlaceholder}
-              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all"
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all shadow-2xs"
             />
           </div>
 
           {filterOptions.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <div className="flex items-center gap-1.5 self-start sm:self-auto">
+              <Filter className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
               <select
                 value={selectedFilter}
                 onChange={(e) => {
                   setSelectedFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-2xs cursor-pointer"
               >
                 <option value="ALL">All Categories</option>
                 {filterOptions.map((opt) => (
@@ -79,16 +79,16 @@ export const DataTable = ({
           )}
         </div>
 
-        {actions && <div>{actions}</div>}
+        {actions && <div className="self-end sm:self-auto">{actions}</div>}
       </div>
 
-      {/* Table Body */}
-      <div className="overflow-x-auto">
+      {/* Table Body with horizontal scroll indicator on mobile */}
+      <div className="overflow-x-auto touch-pan-x">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+            <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 font-bold uppercase tracking-wider text-[10px] sm:text-[11px]">
               {columns.map((col, idx) => (
-                <th key={idx} className="px-4 py-3 font-semibold">
+                <th key={idx} className="px-3.5 sm:px-4 py-3 font-semibold">
                   {col.header}
                 </th>
               ))}
@@ -107,9 +107,9 @@ export const DataTable = ({
               </tr>
             ) : (
               currentData.map((row, rIdx) => (
-                <tr key={rIdx} className="hover:bg-slate-50/80 transition-colors">
+                <tr key={rIdx} className="hover:bg-blue-50/30 transition-colors">
                   {columns.map((col, cIdx) => (
-                    <td key={cIdx} className="px-4 py-3 whitespace-nowrap">
+                    <td key={cIdx} className="px-3.5 sm:px-4 py-3 whitespace-nowrap">
                       {col.cell ? col.cell(row) : row[col.accessor]}
                     </td>
                   ))}
@@ -121,8 +121,8 @@ export const DataTable = ({
       </div>
 
       {/* Pagination Footer */}
-      <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500 font-medium">
-        <div>
+      <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs text-slate-500 font-medium">
+        <div className="text-center sm:text-left text-[11px] sm:text-xs">
           Showing {filteredData.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} to{' '}
           {Math.min(currentPage * pageSize, filteredData.length)} of {filteredData.length} records
         </div>
@@ -131,17 +131,19 @@ export const DataTable = ({
           <button
             onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
             disabled={currentPage === 1}
-            className="p-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs transition-transform"
+            aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="px-2 font-semibold text-slate-700">
+          <span className="px-2 font-bold text-slate-700 text-xs">
             Page {currentPage} of {totalPages}
           </span>
           <button
             onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
             disabled={currentPage === totalPages}
-            className="p-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs transition-transform"
+            aria-label="Next page"
           >
             <ChevronRight className="w-4 h-4" />
           </button>

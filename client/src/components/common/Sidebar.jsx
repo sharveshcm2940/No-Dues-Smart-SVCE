@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   BookOpen, 
@@ -8,19 +8,27 @@ import {
   Megaphone, 
   Settings, 
   Users, 
-  FileText,
-  Clock,
-  LogOut,
-  Crown,
+  FileText, 
+  Clock, 
+  LogOut, 
+  Crown, 
   UserCheck,
-  Menu,
-  X
+  ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import MobileBottomNav from './MobileBottomNav';
+import MobileDrawer from './MobileDrawer';
 
 export const Sidebar = ({ role, activeTab, setActiveTab }) => {
   const { logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Listen for header hamburger menu clicks
+  useEffect(() => {
+    const handleToggle = () => setMobileMenuOpen(prev => !prev);
+    window.addEventListener('toggle-mobile-menu', handleToggle);
+    return () => window.removeEventListener('toggle-mobile-menu', handleToggle);
+  }, []);
 
   const studentNav = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -39,6 +47,7 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'complaints', label: 'Complaint Tickets', icon: MessageSquareWarning },
     { id: 'announcements', label: 'Announcements', icon: Megaphone },
     { id: 'reports', label: 'Analytics & Reports', icon: FileText },
+    { id: 'audit_logs', label: 'Audit Logs', icon: ShieldCheck },
     { id: 'settings', label: 'Staff Settings', icon: Settings },
   ];
 
@@ -48,6 +57,7 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'students', label: 'Students & Hall Ticket', icon: UserCheck },
     { id: 'advisees', label: 'Advisee Roster', icon: Users },
     { id: 'reports', label: 'Advisee Reports', icon: FileText },
+    { id: 'audit_logs', label: 'Audit Logs', icon: ShieldCheck },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -58,6 +68,7 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'students', label: 'Department Roster', icon: Users },
     { id: 'announcements', label: 'Announcements', icon: Megaphone },
     { id: 'reports', label: 'Master Reports', icon: FileText },
+    { id: 'audit_logs', label: 'System Audit Logs', icon: ShieldCheck },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -66,6 +77,7 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'approvals', label: 'Stage 5 Career Desk', icon: FileCheck2 },
     { id: 'career_roster', label: 'Career Roster', icon: Users },
     { id: 'reports', label: 'Placement Analytics', icon: FileText },
+    { id: 'audit_logs', label: 'Audit Logs', icon: ShieldCheck },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -73,6 +85,7 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'dashboard', label: 'ERP Dashboard', icon: LayoutDashboard },
     { id: 'clearances', label: 'Stage 1 Finance Desk', icon: FileCheck2 },
     { id: 'reports', label: 'Fee Audit Reports', icon: FileText },
+    { id: 'audit_logs', label: 'Audit Logs', icon: ShieldCheck },
     { id: 'settings', label: 'Officer Settings', icon: Settings },
   ];
 
@@ -80,6 +93,7 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     { id: 'dashboard', label: 'ERP Dashboard', icon: LayoutDashboard },
     { id: 'clearances', label: 'Stage 2 Central Library', icon: FileCheck2 },
     { id: 'reports', label: 'Central Library Reports', icon: FileText },
+    { id: 'audit_logs', label: 'Audit Logs', icon: ShieldCheck },
     { id: 'settings', label: 'Library Settings', icon: Settings },
   ];
 
@@ -106,104 +120,31 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
     sectionLabel = 'Finance Clearance Desk';
   }
 
-  const handleTabClick = (id) => {
-    setActiveTab(id);
-    setMobileMenuOpen(false);
-  };
-
   return (
     <>
-      {/* 1. MOBILE TOP HORIZONTAL NAVIGATION STRIP (VISIBLE ONLY ON MOBILE < md) */}
-      <div className="md:hidden w-full bg-white border-b border-slate-200 px-3 py-2 flex items-center justify-between gap-2 overflow-x-auto sticky top-16 z-20 shadow-2xs">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-[calc(100%-3rem)]">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleTabClick(item.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all flex-shrink-0 ${
-                  isActive
-                    ? 'bg-brand-600 text-white shadow-2xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-500'}`} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
+      {/* 1. NATIVE MOBILE BOTTOM NAVIGATION BAR */}
+      <MobileBottomNav 
+        role={role} 
+        activeTab={activeTab} 
+        onTabSelect={(id) => setActiveTab(id)} 
+        onOpenMenu={() => setMobileMenuOpen(true)} 
+      />
 
-        {/* Mobile Full Menu Toggle Button */}
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg flex-shrink-0 border border-slate-200 cursor-pointer"
-          aria-label="Toggle navigation menu"
-        >
-          {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-        </button>
-      </div>
-
-      {/* 2. MOBILE DRAWER SLIDE-OVER OVERLAY */}
-      {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-xs flex">
-          <div className="w-4/5 max-w-xs bg-white h-full shadow-2xl flex flex-col justify-between p-5 animate-in slide-in-from-left duration-200">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-brand-600">
-                  {sectionLabel}
-                </span>
-                <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <nav className="space-y-1.5">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => handleTabClick(item.id)}
-                      className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        isActive
-                          ? 'bg-brand-600 text-white shadow-xs'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-500'}`} />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
-
-            <div className="pt-4 border-t border-slate-200">
-              <button
-                onClick={logout}
-                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 transition-colors cursor-pointer"
-              >
-                <LogOut className="w-4 h-4 text-red-500" />
-                <span>Exit ERP Portal</span>
-              </button>
-            </div>
-          </div>
-          <div className="flex-1" onClick={() => setMobileMenuOpen(false)} />
-        </div>
-      )}
+      {/* 2. MOBILE SLIDE-OVER DRAWER FOR ALL SERVICES & PROFILE */}
+      <MobileDrawer 
+        isOpen={mobileMenuOpen} 
+        onClose={() => setMobileMenuOpen(false)} 
+        navItems={navItems} 
+        activeTab={activeTab} 
+        onTabSelect={(id) => setActiveTab(id)} 
+        sectionLabel={sectionLabel} 
+      />
 
       {/* 3. DESKTOP SIDEBAR (VISIBLE ON md AND UP) */}
-      <aside className="hidden md:flex w-64 bg-white border-r border-slate-200 min-h-[calc(100vh-4rem)] flex-col justify-between p-4 flex-shrink-0">
+      <aside className="hidden md:flex w-64 bg-white border-r border-slate-200/90 min-h-[calc(100vh-4rem)] flex-col justify-between p-4 flex-shrink-0">
         <div className="space-y-6">
           <div>
-            <p className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            <p className="px-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2.5">
               {sectionLabel}
             </p>
             <nav className="space-y-1">
@@ -214,23 +155,23 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
                       isActive
-                        ? 'bg-brand-600 text-white shadow-xs'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        ? 'bg-blue-600 text-white shadow-sm font-bold'
+                        : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'
                     }`}
                   >
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                    <span>{item.label}</span>
+                    <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="truncate">{item.label}</span>
                   </button>
                 );
               })}
             </nav>
           </div>
 
-          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+          <div className="p-3.5 bg-slate-50/80 border border-slate-200/70 rounded-2xl text-xs shadow-xs">
             <div className="flex items-center gap-2 font-bold text-slate-800 mb-1">
-              <Clock className="w-3.5 h-3.5 text-brand-600" />
+              <Clock className="w-3.5 h-3.5 text-blue-600" />
               <span>SVCE Campus ERP</span>
             </div>
             <p className="text-[11px] text-slate-500">Academic Year 2025 - 2026</p>
@@ -238,10 +179,10 @@ export const Sidebar = ({ role, activeTab, setActiveTab }) => {
           </div>
         </div>
 
-        <div className="pt-4 border-t border-slate-200">
+        <div className="pt-4 border-t border-slate-100">
           <button
             onClick={logout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4 text-red-500" />
             <span>Exit ERP Portal</span>

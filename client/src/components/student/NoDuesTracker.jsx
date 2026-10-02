@@ -15,8 +15,7 @@ import {
   Upload,
   FileText,
   X,
-  RotateCcw,
-  History
+  RotateCcw
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import Modal from '../common/Modal';
@@ -39,30 +38,7 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
   const [resubmitProofName, setResubmitProofName] = useState('');
   const [submittingResubmit, setSubmittingResubmit] = useState(false);
 
-  // Audit Logs state
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
 
-  const fetchAuditLogs = async () => {
-    if (!activeRequest?.id) return;
-    try {
-      setLoadingAuditLogs(true);
-      const res = await api.get(`/student/audit-logs/${activeRequest.id}`);
-      if (res.data.success) {
-        setAuditLogs(res.data.logs || []);
-      }
-    } catch (err) {
-      console.error('Error fetching audit logs:', err);
-    } finally {
-      setLoadingAuditLogs(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeRequest?.id) {
-      fetchAuditLogs();
-    }
-  }, [activeRequest?.id, activeRequest?.overall_status, activeRequest?.resubmission_count]);
 
   const rejectedStage = stages.find(s => s.status === 'Rejected');
 
@@ -88,7 +64,6 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
         setResubmitProofUrl('');
         setResubmitProofName('');
         if (onSubmitRequest) onSubmitRequest({ refreshOnly: true });
-        fetchAuditLogs();
       }
     } catch (err) {
       console.error('Re-submit error:', err);
@@ -1004,68 +979,7 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
         </div>
       </div>
 
-      {/* Permanent Audit Trail & History Log */}
-      <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-xs space-y-4">
-        <h4 className="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-2">
-          <History className="w-4 h-4 text-brand-600" />
-          <span>Audit Trail & Permanent Action History ({auditLogs.length} Events)</span>
-        </h4>
 
-        {auditLogs.length === 0 ? (
-          <p className="text-xs text-slate-500 italic">No audit log entries recorded yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {auditLogs.map((log) => (
-              <div key={log.id} className="p-3.5 rounded-lg border border-slate-200 bg-slate-50/70 text-xs space-y-1.5">
-                <div className="flex items-center justify-between font-bold text-slate-800">
-                  <span className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                      log.action_type === 'Approval' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                      log.action_type === 'Rejection' ? 'bg-red-100 text-red-800 border border-red-200' :
-                      log.action_type === 'Re-submission' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                      'bg-slate-200 text-slate-800'
-                    }`}>
-                      {log.action_type}
-                    </span>
-                    <span>{log.department_name}</span>
-                  </span>
-                  <span className="text-[11px] text-slate-500 font-mono">{formatDateTime(log.timestamp)}</span>
-                </div>
-
-                <div className="text-slate-600 font-medium">
-                  <strong>User / Officer:</strong> {log.actor_name} ({log.actor_role})
-                </div>
-
-                {log.remarks && (
-                  <div className="text-slate-700 bg-white p-2 rounded border border-slate-200 font-mono text-[11px]">
-                    <strong>Official Remarks:</strong> "{log.remarks}"
-                  </div>
-                )}
-
-                {log.student_comment && (
-                  <div className="text-blue-900 bg-blue-50/80 p-2 rounded border border-blue-200 font-sans text-[11px]">
-                    <strong>Student Re-submission Comment:</strong> "{log.student_comment}"
-                  </div>
-                )}
-
-                {log.attachment_url && (
-                  <div className="pt-1">
-                    <a
-                      href={log.attachment_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-brand-600 hover:text-brand-800 font-bold underline text-[11px] flex items-center gap-1"
-                    >
-                      <FileText className="w-3.5 h-3.5" />
-                      <span>View Uploaded Proof Document</span>
-                    </a>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Submission Form Modal */}
       <Modal 
@@ -1086,7 +1000,6 @@ export const NoDuesTracker = ({ activeRequest, stages = [], onSubmitRequest, onC
         onSuccess={(msg) => {
           showAlert(msg, 'success');
           if (onSubmitRequest) onSubmitRequest({ refreshOnly: true });
-          fetchAuditLogs();
         }}
       />
     </div>

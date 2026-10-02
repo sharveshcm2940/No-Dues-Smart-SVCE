@@ -6,6 +6,7 @@ import Badge from '../components/common/Badge';
 import DataTable from '../components/common/DataTable';
 import ReportsExporter from '../components/library/ReportsExporter';
 import Modal from '../components/common/Modal';
+import AuditLogsViewer from '../components/common/AuditLogsViewer';
 import { 
   Building2, 
   FileCheck2, 
@@ -334,7 +335,7 @@ export const DPCDashboard = () => {
       <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto">
         <Sidebar role="dpc" activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <main className="flex-1 p-3.5 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
+        <main className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto pb-24 md:pb-8">
 
           {/* TAB 1: EXECUTIVE OVERVIEW DASHBOARD */}
           {activeTab === 'dashboard' && (
@@ -701,6 +702,11 @@ export const DPCDashboard = () => {
                 </form>
               </div>
             </div>
+          )}
+
+          {/* Audit Logs Tab */}
+          {activeTab === 'audit_logs' && (
+            <AuditLogsViewer role="dpc" title="Department Placement Coordinator Audit & Device Activity Trail" />
           )}
 
         </main>

@@ -5,7 +5,7 @@ WORKDIR /app
 # Copy dependency manifests
 COPY package*.json ./
 
-# Install dependencies (including native sqlite3 bindings)
+# Install dependencies
 RUN npm install
 
 # Copy source code

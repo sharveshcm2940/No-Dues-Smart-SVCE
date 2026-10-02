@@ -139,7 +139,7 @@ exports.processHODAction = async (req, res) => {
       // Update HOD Stage
       await query(
         `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = ?, updated_at = datetime('now')
+         SET status = 'Approved', approved_by = ?, remarks = ?, updated_at = NOW()
          WHERE request_id = ? AND department_name = 'HOD'`,
         [approverName, remarks || 'Head of Department approval granted.', requestId]
       );
@@ -180,7 +180,7 @@ exports.processHODAction = async (req, res) => {
 
       await query(
         `UPDATE nodues_stages 
-         SET status = ?, approved_by = ?, remarks = ?, updated_at = datetime('now')
+         SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
          WHERE request_id = ? AND department_name = 'HOD'`,
         [newStatus, approverName, remarks, requestId]
       );
@@ -244,7 +244,7 @@ exports.bulkApproveHOD = async (req, res) => {
     for (const item of pendingStages) {
       await query(
         `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk HOD approval granted.', updated_at = datetime('now') 
+         SET status = 'Approved', approved_by = ?, remarks = 'Bulk HOD approval granted.', updated_at = NOW() 
          WHERE request_id = ? AND department_name = 'HOD'`,
         [approverName, item.request_id]
       );
@@ -301,7 +301,7 @@ exports.bulkRegisterStudents = async (req, res) => {
 
       // Insert User login record
       await query(
-        `INSERT OR IGNORE INTO users (username, password, role, email) VALUES (?, ?, 'student', ?)`,
+        `INSERT IGNORE INTO users (username, password, role, email) VALUES (?, ?, 'student', ?)`,
         [regNo, passwordHash, email]
       );
 
@@ -309,13 +309,13 @@ exports.bulkRegisterStudents = async (req, res) => {
       if (userRow) {
         // Insert student profile
         const result = await query(
-          `INSERT OR IGNORE INTO students (
+          `INSERT IGNORE INTO students (
             user_id, register_number, id_card_number, full_name, college_name, department, programme, batch, year, semester, section, email, phone, advisor_name, advisor_emp_id, advisor_email, advisor_phone
           ) VALUES (?, ?, ?, ?, 'Sri Venkateswara College of Engineering', 'Information Technology', 'B.Tech IT', ?, ?, 'Semester VII', ?, ?, ?, ?, ?, ?, ?)`,
           [userRow.id, regNo, idCard, name, batch, year, section, email, phone, advName, advEmp, advEmail, advPhone]
         );
 
-        if (result.changes > 0) {
+        if ((result.changes && result.changes > 0) || (result.affectedRows && result.affectedRows > 0)) {
           registeredCount++;
         } else {
           skippedCount++;

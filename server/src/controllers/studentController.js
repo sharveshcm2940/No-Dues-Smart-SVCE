@@ -1,5 +1,6 @@
 const { query, getOne } = require('../config/db');
 const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
+const { logAuditEvent } = require('../utils/auditLogger');
 
 // Get Student Dashboard Data
 exports.getStudentDashboard = async (req, res) => {
@@ -182,7 +183,7 @@ exports.submitNoDuesRequest = async (req, res) => {
     for (const s of stages) {
       await query(
         `INSERT INTO nodues_stages (request_id, department_name, stage_order, status, updated_at, approved_by, remarks)
-         VALUES (?, ?, ?, ?, datetime('now'), ?, ?)`,
+         VALUES (?, ?, ?, ?, NOW(), ?, ?)`,
         [newReq.lastID, s.name, s.order, s.status, s.approved_by, s.remarks]
       );
     }
@@ -440,6 +441,14 @@ exports.updateProfile = async (req, res) => {
       await query(`UPDATE students SET photo_url = ? WHERE register_number = ?`, [photoUrl, regNo]);
     }
 
+    await logAuditEvent({
+      req,
+      user: req.user,
+      action: 'PROFILE_UPDATED',
+      details: `Student profile contact/photo details updated`,
+      module: 'Profile Management'
+    });
+
     return res.json({ success: true, message: 'Profile details updated successfully.' });
   } catch (error) {
     console.error('Update Profile Error:', error);
@@ -489,7 +498,7 @@ exports.resubmitNoDuesRequest = async (req, res) => {
     // Reset rejected stage to Pending
     await query(
       `UPDATE nodues_stages 
-       SET status = 'Pending', approved_by = NULL, remarks = ?, updated_at = datetime('now')
+       SET status = 'Pending', approved_by = NULL, remarks = ?, updated_at = NOW()
        WHERE id = ?`,
       [`Re-submitted by student: ${comment.trim()}`, rejectedStage.id]
     );

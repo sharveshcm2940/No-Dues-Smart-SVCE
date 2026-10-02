@@ -102,7 +102,7 @@ exports.processMainLibraryAction = async (req, res) => {
     // Update Central Library Stage
     await query(
       `UPDATE nodues_stages 
-       SET status = ?, approved_by = ?, remarks = ?, updated_at = datetime('now')
+       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
        WHERE request_id = ? AND department_name = 'Central Library'`,
       [newStatus, approverName, remarks || 'Central library books and fines cleared.', requestId]
     );
@@ -174,7 +174,7 @@ exports.bulkApproveMainLibrary = async (req, res) => {
     for (const item of pendingRequests) {
       await query(
         `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Main Library.', updated_at = datetime('now')
+         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Main Library.', updated_at = NOW()
          WHERE request_id = ? AND department_name = 'Central Library'`,
         [approverName, item.request_id]
       );
