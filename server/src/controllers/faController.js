@@ -105,6 +105,18 @@ exports.processFAAction = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No-Dues Request record not found.' });
     }
 
+    // Authorization Check: Verify student belongs to this Faculty Advisor
+    const student = await getOne(
+      'SELECT id FROM students WHERE register_number = ? AND (advisor_emp_id = ? OR advisor_name = ?)',
+      [request.register_number, empId, advisor ? advisor.full_name : '']
+    );
+    if (!student) {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized: This student is not assigned under your Faculty Advisor advisee roster.'
+      });
+    }
+
     if (action === 'Approve') {
       const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
       const financeStage = stages.find(s => s.department_name === 'Finance');
@@ -353,9 +365,18 @@ exports.getStudentHallTicketDetail = async (req, res) => {
   try {
     const { regNo } = req.params;
 
-    const student = await getOne('SELECT * FROM students WHERE register_number = ?', [regNo]);
+    const empId = req.user.username;
+    const advisor = await getOne('SELECT full_name FROM faculty_advisors WHERE employee_id = ?', [empId]);
+
+    const student = await getOne(
+      'SELECT * FROM students WHERE register_number = ? AND (advisor_emp_id = ? OR advisor_name = ?)',
+      [regNo, empId, advisor ? advisor.full_name : '']
+    );
     if (!student) {
-      return res.status(404).json({ success: false, message: 'Student record not found.' });
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized: Student is not assigned under your Faculty Advisor advisee roster.'
+      });
     }
 
     // No dues request & stages

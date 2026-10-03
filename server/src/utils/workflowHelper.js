@@ -172,15 +172,29 @@ async function updateRequestProgress(requestId) {
     }
 
     let certNo = request.certificate_number;
+    let certToken = request.certificate_token;
     if (newOverallStatus === 'Approved') {
       if (!certNo) {
         certNo = `CERT-SVCE-IT-2026-${String(requestId).padStart(4, '0')}`;
       }
+      const { generateCertificateToken, computeCertificateHmac } = require('./certificateSigner');
+      if (!certToken) {
+        certToken = generateCertificateToken();
+      }
+      const completionDate = request.completion_date || new Date();
+      const certHmac = computeCertificateHmac({
+        certificateNumber: certNo,
+        registerNumber: request.register_number,
+        issueDate: completionDate,
+        requestId
+      });
       await query(
         `UPDATE nodues_requests 
-         SET overall_status = 'Approved', progress_percentage = 100, current_stage = 'Completed', certificate_number = ?, completion_date = NOW()
+         SET overall_status = 'Approved', progress_percentage = 100, current_stage = 'Completed', 
+             certificate_number = ?, certificate_token = ?, certificate_hmac = ?, certificate_version = COALESCE(certificate_version, 1),
+             certificate_status = COALESCE(certificate_status, 'Valid'), completion_date = COALESCE(completion_date, NOW())
          WHERE id = ?`,
-        [certNo, requestId]
+        [certNo, certToken, certHmac, requestId]
       );
     } else {
       await query(

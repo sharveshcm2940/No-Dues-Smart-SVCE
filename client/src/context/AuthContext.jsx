@@ -55,12 +55,24 @@ export const AuthProvider = ({ children }) => {
         deviceType: meta.deviceType
       });
       if (response.data.success) {
-        const { token, user } = response.data;
+        if (response.data.mfa_required) {
+          return {
+            success: false,
+            mfa_required: true,
+            mfa_token: response.data.mfa_token,
+            user_id: response.data.user_id,
+            username: response.data.username
+          };
+        }
+        const { token, refreshToken, user } = response.data;
         setToken(token);
         setUser(user);
         localStorage.setItem('nodues_token', token);
+        if (refreshToken) {
+          localStorage.setItem('nodues_refresh_token', refreshToken);
+        }
         localStorage.setItem('nodues_user', JSON.stringify(user));
-        return { success: true };
+        return { success: true, user };
       } else {
         setAuthError(response.data.message || 'Login failed');
         return { success: false, message: response.data.message };
@@ -74,11 +86,49 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('nodues_token');
-    localStorage.removeItem('nodues_user');
+  const verifyMfa = async (mfa_token, totp_code) => {
+    setLoading(true);
+    setAuthError(null);
+    try {
+      const response = await api.post('/auth/mfa/verify', { mfa_token, totp_code });
+      if (response.data.success) {
+        const { token, refreshToken, user } = response.data;
+        setToken(token);
+        setUser(user);
+        localStorage.setItem('nodues_token', token);
+        if (refreshToken) {
+          localStorage.setItem('nodues_refresh_token', refreshToken);
+        }
+        localStorage.setItem('nodues_user', JSON.stringify(user));
+        return { success: true, user };
+      } else {
+        setAuthError(response.data.message || 'MFA Verification failed');
+        return { success: false, message: response.data.message };
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Invalid or expired TOTP code.';
+      setAuthError(msg);
+      return { success: false, message: msg };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      const refreshToken = localStorage.getItem('nodues_refresh_token');
+      if (refreshToken) {
+        await api.post('/auth/logout', { refreshToken });
+      }
+    } catch (e) {
+      // Ignore network errors on logout
+    } finally {
+      setUser(null);
+      setToken(null);
+      localStorage.removeItem('nodues_token');
+      localStorage.removeItem('nodues_refresh_token');
+      localStorage.removeItem('nodues_user');
+    }
   };
 
   const updateUserData = (updatedProfile) => {
@@ -103,6 +153,7 @@ export const AuthProvider = ({ children }) => {
         loading,
         authError,
         login,
+        verifyMfa,
         logout,
         updateUserData,
         isAuthenticated: !!token && !!user

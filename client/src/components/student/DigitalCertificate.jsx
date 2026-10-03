@@ -48,17 +48,9 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
 
   const certNumber = selectedCert.certificate_number || `CERT-SVCE-IT-2026-${String(selectedCert.id).padStart(4, '0')}`;
   const certDate = selectedCert.completion_date ? new Date(selectedCert.completion_date).toLocaleDateString() : new Date(selectedCert.updated_at || selectedCert.request_date).toLocaleDateString();
-
-  const qrPayload = JSON.stringify({
-    institution: 'Sri Venkateswara College of Engineering (SVCE)',
-    department: 'Information Technology',
-    certificateNumber: certNumber,
-    studentName: profile?.full_name || selectedCert.student_name,
-    registerNumber: selectedCert.register_number,
-    idCardNumber: selectedCert.id_card_number,
-    status: 'VERIFIED_CLEARED_NO_DUES',
-    dateOfIssue: certDate
-  });
+  const certToken = selectedCert.certificate_token || selectedCert.verification_code || String(selectedCert.id);
+  const publicBaseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+  const verifyUrl = `${publicBaseUrl}/verify/${certToken}`;
 
   const handlePrint = () => {
     window.print();
@@ -232,7 +224,7 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
             {/* QR Code Verification Stamp */}
             <div className="text-center sm:text-left">
               <div className="bg-white p-2 border border-slate-200 inline-block rounded shadow-xs">
-                <QRCodeSVG value={qrPayload} size={85} level="H" />
+                <QRCodeSVG value={verifyUrl} size={85} level="H" />
               </div>
               <p className="text-[10px] text-slate-500 font-mono mt-1">Scan to Verify Authenticity</p>
             </div>

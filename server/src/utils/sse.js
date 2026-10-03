@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
-const { JWT_SECRET } = require('../middleware/auth');
+const config = require('../config/env');
+const JWT_SECRET = config.JWT_SECRET;
 
 // Set of active SSE client connections
 const clients = new Set();
@@ -8,23 +9,24 @@ const clients = new Set();
  * Handles incoming SSE connection requests (/api/sse)
  */
 function handleSSEConnection(req, res) {
+  // Extract user info from JWT query param or header
+  const token = req.query.token || (req.headers['authorization'] && req.headers['authorization'].split(' ')[1]);
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Authentication token required for SSE stream.' });
+  }
+
+  let user = null;
+  try {
+    user = jwt.verify(token, JWT_SECRET);
+  } catch (e) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired authentication token.' });
+  }
+
   // Set SSE Headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('X-Accel-Buffering', 'no'); // Disable proxy buffering for Nginx/IIS
-
-  // Extract user info from JWT query param or header
-  let user = null;
-  const token = req.query.token || (req.headers['authorization'] && req.headers['authorization'].split(' ')[1]);
-  if (token) {
-    try {
-      user = jwt.verify(token, JWT_SECRET);
-    } catch (e) {
-      // Invalid token - close connection or proceed anonymously
-    }
-  }
 
   const clientId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
   const client = {

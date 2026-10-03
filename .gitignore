@@ -18,3 +18,4 @@ Thumbs.db
 .vscode/
 .idea/
 dev-dist/
+server/uploads/

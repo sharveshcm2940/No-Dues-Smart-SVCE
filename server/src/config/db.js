@@ -196,6 +196,7 @@ const getOne = async (sql, params = []) => {
 
 module.exports = {
   mysqlPool,
+  getPool: () => mysqlPool,
   ensureReady,
   getEngine: () => 'mysql',
   query,

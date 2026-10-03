@@ -196,13 +196,46 @@ export const StudentDashboard = () => {
     }
   };
 
+  const [photoUploading, setPhotoUploading] = useState(false);
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setSettingsMsg({ type: 'error', text: 'Photo exceeds maximum 5 MB limit.' });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    setPhotoUploading(true);
+    setSettingsMsg({ type: '', text: '' });
+    try {
+      const res = await api.post('/student/profile-photo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (res.data?.success) {
+        setSettingsMsg({ type: 'success', text: 'Profile photo updated, resized, and sanitized (EXIF stripped)!' });
+        fetchDashboard();
+      } else {
+        setSettingsMsg({ type: 'error', text: res.data?.message || 'Failed to upload photo.' });
+      }
+    } catch (err) {
+      setSettingsMsg({ type: 'error', text: err.response?.data?.message || 'Failed to upload image. Must be a valid JPG or PNG.' });
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
     setSettingsMsg({ type: '', text: '' });
     try {
-      const res = await api.put('/student/profile', { phone: phoneInput, photoUrl: photoUrlInput });
+      const res = await api.put('/student/profile', { phone: phoneInput });
       if (res.data.success) {
-        setSettingsMsg({ type: 'success', text: 'Profile details updated!' });
+        setSettingsMsg({ type: 'success', text: 'Profile contact details updated!' });
         fetchDashboard();
       }
     } catch (err) {
@@ -598,12 +631,37 @@ export const StudentDashboard = () => {
                 </form>
               </div>
 
-              {/* Contact Details Update */}
+              {/* Contact & Profile Photo Update */}
               <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-xs space-y-4">
                 <h3 className="text-sm font-bold text-slate-800 pb-2 border-b border-slate-100 flex items-center gap-2">
                   <User className="w-4 h-4 text-brand-600" />
-                  <span>Update Profile Contact Info</span>
+                  <span>Update Profile & Contact Info</span>
                 </h3>
+
+                {/* Profile Photo Upload */}
+                <div className="flex items-center gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                  <div className="w-16 h-16 rounded-xl bg-brand-100 border border-brand-300 flex-shrink-0 flex items-center justify-center font-bold text-brand-800 text-lg overflow-hidden">
+                    {profile.photo_url ? (
+                      <img src={profile.photo_url} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{profile.full_name ? profile.full_name.charAt(0) : 'S'}</span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs font-bold text-slate-800">Student Profile Photo</p>
+                    <p className="text-[11px] text-slate-500 mb-2">Upload a JPG or PNG image (max 5 MB). Image will be resized to 400x400 and metadata (EXIF) stripped.</p>
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors shadow-2xs">
+                      <span>{photoUploading ? 'Uploading & Processing...' : 'Upload New Photo'}</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        onChange={handlePhotoUpload}
+                        disabled={photoUploading}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
 
                 <form onSubmit={handleProfileUpdate} className="space-y-4">
                   <div>
@@ -620,7 +678,7 @@ export const StudentDashboard = () => {
                     type="submit"
                     className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
                   >
-                    Save Changes
+                    Save Phone Number
                   </button>
                 </form>
               </div>

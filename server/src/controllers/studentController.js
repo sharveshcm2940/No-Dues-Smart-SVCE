@@ -250,10 +250,24 @@ exports.cancelNoDuesRequest = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Approved requests cannot be cancelled.' });
     }
 
-    // Delete audit logs, stages, and request record cleanly
-    await query(`DELETE FROM nodues_audit_logs WHERE request_id = ?`, [requestId]);
-    await query(`DELETE FROM nodues_stages WHERE request_id = ?`, [requestId]);
-    await query(`DELETE FROM nodues_requests WHERE id = ?`, [requestId]);
+    // Soft cancellation: update status to Cancelled and retain audit logs and stage history
+    await query(
+      `UPDATE nodues_requests 
+       SET overall_status = 'Cancelled', current_stage = 'Cancelled by Student' 
+       WHERE id = ?`,
+      [requestId]
+    );
+
+    const { logAuditEntry } = require('../utils/workflowHelper');
+    await logAuditEntry({
+      requestId,
+      departmentName: 'Student Cancellation',
+      actionType: 'Cancellation',
+      actorName: request.student_name,
+      actorRole: 'student',
+      statusAfter: 'Cancelled',
+      remarks: 'Application cancelled by student. Audit trail preserved.'
+    });
 
     return res.json({ success: true, message: 'No-Dues request has been cancelled successfully.' });
   } catch (error) {
@@ -565,6 +579,18 @@ exports.resubmitNoDuesRequest = async (req, res) => {
 exports.getAuditLogs = async (req, res) => {
   try {
     const { requestId } = req.params;
+
+    // Authorization check: If user is student, verify request ownership
+    if (req.user.role === 'student') {
+      const owned = await getOne(
+        'SELECT id FROM nodues_requests WHERE id = ? AND register_number = ?',
+        [requestId, req.user.username]
+      );
+      if (!owned) {
+        return res.status(403).json({ success: false, message: 'Access denied: You do not own this clearance request.' });
+      }
+    }
+
     const logs = await query(
       `SELECT * FROM nodues_audit_logs WHERE request_id = ? ORDER BY id DESC`,
       [requestId]

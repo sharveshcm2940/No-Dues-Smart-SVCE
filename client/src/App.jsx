@@ -53,7 +53,19 @@ const MainAppContent = () => {
   return <LoginPage />;
 };
 
+import PublicVerifyCertificate from './pages/PublicVerifyCertificate';
+
 export function App() {
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  if (pathname.startsWith('/verify/')) {
+    const token = pathname.replace('/verify/', '').trim();
+    return (
+      <ErrorBoundary>
+        <PublicVerifyCertificate token={token} />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <PWAProvider>

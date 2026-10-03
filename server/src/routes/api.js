@@ -10,9 +10,11 @@ const dpcController = require('../controllers/dpcController');
 const financeController = require('../controllers/financeController');
 const mainLibraryController = require('../controllers/mainLibraryController');
 const auditLogController = require('../controllers/auditLogController');
+const certificateController = require('../controllers/certificateController');
+const fileController = require('../controllers/fileController');
 
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
-
+const { uploadDocument, uploadPhoto } = require('../utils/fileUpload');
 const { handleSSEConnection } = require('../utils/sse');
 
 // Server-Sent Events (SSE) Real-Time Stream Endpoint
@@ -24,9 +26,40 @@ router.post('/audit-logs', authenticateToken, auditLogController.recordClientAct
 
 // Authentication Routes
 router.post('/auth/login', authController.login);
+router.post('/auth/refresh', authController.refreshToken);
+router.post('/auth/logout', authenticateToken, authController.logout);
+router.post('/auth/forgot-password', authController.forgotPassword);
+router.post('/auth/reset-password', authController.resetPassword);
+router.post('/auth/mfa/setup', authenticateToken, authController.setupMfa);
+router.post('/auth/mfa/enable', authenticateToken, authController.enableMfa);
+router.post('/auth/mfa/verify', authController.verifyMfa);
 router.get('/auth/me', authenticateToken, authController.getCurrentUser);
 router.post('/auth/password', authenticateToken, authController.updatePassword);
 router.post('/auth/handover', authenticateToken, authController.handoverPosition);
+
+// Public Certificate Verification (Strict field isolation, rate-limited)
+router.get('/verify/:token', certificateController.verifyCertificatePublic);
+router.get('/certificate/verify/:token', certificateController.verifyCertificatePublic);
+
+// Secure File Management
+router.post(
+  '/files/upload',
+  authenticateToken,
+  uploadDocument.single('file'),
+  fileController.uploadDocument
+);
+router.get(
+  '/files/:fileId',
+  authenticateToken,
+  fileController.downloadFile
+);
+router.post(
+  '/student/profile-photo',
+  authenticateToken,
+  authorizeRole(['student']),
+  uploadPhoto.single('photo'),
+  fileController.uploadProfilePhoto
+);
 
 // Student Portal Routes (Role: student)
 router.get(
@@ -269,6 +302,20 @@ router.post(
   authenticateToken,
   authorizeRole(['hod']),
   hodController.bulkApproveHOD
+);
+
+router.post(
+  '/hod/certificate/revoke',
+  authenticateToken,
+  authorizeRole(['hod', 'admin']),
+  certificateController.revokeCertificate
+);
+
+router.post(
+  '/hod/certificate/reissue',
+  authenticateToken,
+  authorizeRole(['hod', 'admin']),
+  certificateController.reissueCertificate
 );
 
 router.post(
