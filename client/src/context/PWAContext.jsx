@@ -20,18 +20,16 @@ export const PWAProvider = ({ children }) => {
       const updateSW = registerSW({
         immediate: true,
         onNeedRefresh() {
-          console.log('[PWA] New version of SVCE No-Dues portal is available.');
           setNeedRefresh(true);
         },
         onOfflineReady() {
-          console.log('[PWA] SVCE No-Dues portal is cached and ready for offline usage.');
           setOfflineReady(true);
         },
-        onRegistered(registration) {
-          console.log('[PWA] Service worker registered successfully:', registration?.scope);
+        onRegistered() {
+          // Service worker registered
         },
-        onRegisterError(error) {
-          console.warn('[PWA] Service worker registration error:', error);
+        onRegisterError() {
+          // SW registration error handled silently
         }
       });
       setUpdateSWFn(() => updateSW);

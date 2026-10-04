@@ -1,6 +1,7 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry, executeStageTransition } = require('../utils/workflowHelper');
+const { sanitizeRequest } = require('../utils/dataMasking');
 
 // Get Main Library Dashboard Stats & Requests
 exports.getMainLibraryDashboard = async (req, res) => {
@@ -11,7 +12,7 @@ exports.getMainLibraryDashboard = async (req, res) => {
     const mainLib = await getOne('SELECT * FROM main_library_profile WHERE employee_id = ?', [empId]);
 
     // All active requests with student details
-    const allRequests = await query(`
+    const allRequestsRaw = await query(`
       SELECT nr.*, s.section, s.batch, s.programme, s.email as student_email, s.phone as student_phone
       FROM nodues_requests nr
       JOIN students s ON nr.register_number = s.register_number
@@ -26,8 +27,8 @@ exports.getMainLibraryDashboard = async (req, res) => {
         s.full_name ASC
     `);
 
-    // Pending Central Library clearances (Stage 2)
-    const pendingRequests = await query(`
+    // Pending Central Library clearances (Stage 3)
+    const pendingRequestsRaw = await query(`
       SELECT 
         nr.*,
         s.section, s.batch, s.programme, s.email as student_email, s.phone as student_phone,
@@ -47,6 +48,9 @@ exports.getMainLibraryDashboard = async (req, res) => {
         END DESC, 
         s.full_name ASC
     `);
+
+    const allRequests = allRequestsRaw.map(r => sanitizeRequest(r, req.user.role));
+    const pendingRequests = pendingRequestsRaw.map(r => sanitizeRequest(r, req.user.role));
 
     // Approved Central Library count
     const approvedCount = await getOne(`
@@ -85,6 +89,10 @@ exports.processMainLibraryAction = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Request ID and Action are required.' });
     }
 
+    if (!['Approve', 'Reject', 'Hold'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Invalid action specified.' });
+    }
+
     const officer = await getOne('SELECT full_name FROM main_library_profile WHERE employee_id = ?', [empId]);
     const approverName = officer ? `${officer.full_name} (Main Library Staff)` : 'Main Library Staff';
 
@@ -97,46 +105,21 @@ exports.processMainLibraryAction = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });
     }
 
-    const newStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : 'Hold');
-
-    // Update Central Library Stage
-    await query(
-      `UPDATE nodues_stages 
-       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
-       WHERE request_id = ? AND department_name = 'Central Library'`,
-      [newStatus, approverName, remarks || 'Central library books and fines cleared.', requestId]
-    );
-
-    // Audit Log Entry
-    await logAuditEntry({
+    const transitionResult = await executeStageTransition({
       requestId,
       departmentName: 'Central Library',
-      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
-      actorName: approverName,
-      actorRole: 'main_library_staff',
-      statusAfter: newStatus,
-      remarks: remarks || (action === 'Approve' ? 'Central library books and fines cleared.' : 'Put on hold by Central Library.')
+      action,
+      remarks: remarks || (action === 'Approve' ? 'Central library books and fines cleared.' : 'Put on hold by Central Library.'),
+      actorUser: { username: empId, full_name: approverName, role: 'main_library_staff' }
     });
 
-    if (action === 'Approve') {
-      await query(
-        `INSERT INTO notifications (target_user, title, message, type)
-         VALUES (?, ?, ?, ?)`,
-        [request.register_number, 'Central Library Approved', `Main Library staff (${approverName}) approved your No-Dues.`, 'success']
-      );
+    if (!transitionResult.success) {
+      return res.status(transitionResult.statusCode || 400).json({ success: false, message: transitionResult.message });
+    }
 
-      // Check parallel clearance to unlock FA
-      await updateRequestProgress(requestId);
-    } else if (action === 'Reject' || action === 'Hold') {
+    if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
-
-      if (isReject) {
-        await query(
-          `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Central Library (Rejected)' WHERE id = ?`,
-          [requestId]
-        );
-      }
 
       await notifyStudentAndFA({
         registerNumber: request.register_number,
@@ -148,7 +131,7 @@ exports.processMainLibraryAction = async (req, res) => {
       });
     }
 
-    return res.json({ success: true, message: `Request ${request.request_number} marked as ${newStatus} by Main Library.` });
+    return res.json({ success: true, message: `Request ${request.request_number} marked as ${transitionResult.status} by Main Library.` });
 
   } catch (error) {
     console.error('Process Main Library Action Error:', error);
@@ -172,21 +155,17 @@ exports.bulkApproveMainLibrary = async (req, res) => {
 
     let count = 0;
     for (const item of pendingRequests) {
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Main Library.', updated_at = NOW()
-         WHERE request_id = ? AND department_name = 'Central Library'`,
-        [approverName, item.request_id]
-      );
+      const transResult = await executeStageTransition({
+        requestId: item.request_id,
+        departmentName: 'Central Library',
+        action: 'Approve',
+        remarks: 'Bulk Approved by Main Library.',
+        actorUser: { username: empId, full_name: approverName, role: 'main_library_staff' }
+      });
 
-      await query(
-        `INSERT INTO notifications (target_user, title, message, type)
-         VALUES (?, ?, ?, ?)`,
-        [item.register_number, 'Central Library Approved', `Main Library staff cleared your No-Dues request ${item.request_number}.`, 'success']
-      );
-
-      await updateRequestProgress(item.request_id);
-      count++;
+      if (transResult.success) {
+        count++;
+      }
     }
 
     return res.json({ success: true, message: `Successfully bulk approved ${count} Central Library clearance requests.` });

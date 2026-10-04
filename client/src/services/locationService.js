@@ -1,23 +1,54 @@
 /**
- * Precise Location & Device Metadata Service
- * Captures real, authentic device details and precise geographic coordinates
- * via Browser Geolocation API (GPS / Wi-Fi) with IP Geolocation fallback.
- * NO HARDCODED OR FAKE LOCATIONS.
+ * Privacy-Preserving Device & Location Service (DPDP Act 2023 Compliant)
+ * 
+ * Rules:
+ * 1. Default auditing relies solely on IP + User-Agent.
+ * 2. GPS is strictly OPT-IN with explicit consent and a stated purpose.
+ * 3. One-click revocation supported anytime.
+ * 4. When GPS is enabled by consent, coordinates are coarse-rounded to 2 decimal places (~1.1km radius)
+ *    to prevent tracking of precise residential locations.
+ * 5. ZERO third-party network leaking (no BigDataCloud, no ipwho.is, no external APIs).
  */
 
 const STORAGE_KEY_LOCATION = 'nodues_precise_location';
-const STORAGE_KEY_COORDS = 'nodues_precise_coords';
-const STORAGE_KEY_TIMESTAMP = 'nodues_location_timestamp';
-const CACHE_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
+const STORAGE_KEY_CONSENT = 'nodues_gps_consent';
 
-let isDetecting = false;
+export function hasLocationConsent() {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(STORAGE_KEY_CONSENT) === 'true';
+}
+
+export function setLocationConsent(granted) {
+  if (typeof window === 'undefined') return;
+  if (granted) {
+    localStorage.setItem(STORAGE_KEY_CONSENT, 'true');
+    initLocationDetection(true);
+  } else {
+    localStorage.removeItem(STORAGE_KEY_CONSENT);
+    localStorage.removeItem(STORAGE_KEY_LOCATION);
+    window.dispatchEvent(new CustomEvent('nodues:location_updated', { detail: { location: 'Location tracking disabled (IP only)' } }));
+  }
+}
+
+export function revokeLocationConsent() {
+  setLocationConsent(false);
+}
 
 /**
- * Returns currently known precise location from cache, or timezone fallback.
+ * Returns currently known coarse location or offline timezone default
  */
 export function getPreciseLocation() {
   if (typeof window === 'undefined') {
-    return 'Web Client (Node Environment)';
+    return 'Institutional Client (Standard)';
+  }
+
+  if (!hasLocationConsent()) {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+      return `Offline Locale (${tz})`;
+    } catch (e) {
+      return 'Institutional Client (IP Audited)';
+    }
   }
 
   const cached = localStorage.getItem(STORAGE_KEY_LOCATION);
@@ -25,186 +56,84 @@ export function getPreciseLocation() {
     return cached.trim();
   }
 
-  // Fast timezone-based realistic fallback while detection completes
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    if (tz) {
-      const city = tz.split('/').pop()?.replace(/_/g, ' ') || tz;
-      return `${city} Region (${tz})`;
-    }
-  } catch (e) {
-    // fallback
-  }
-
-  return 'Detecting precise location...';
+  return 'Coarse Location (Consent Enabled)';
 }
 
 /**
- * High-accuracy reverse geocode using free client reverse geocoding API
+ * Initiates coarse location detection only if user has explicitly opted in
  */
-async function reverseGeocode(latitude, longitude) {
-  try {
-    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`;
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    if (res.ok) {
-      const data = await res.json();
-      const parts = [
-        data.locality,
-        data.city,
-        data.principalSubdivision,
-        data.countryName
-      ].filter(Boolean);
+export function initLocationDetection(force = false) {
+  if (typeof window === 'undefined') return;
 
-      const uniqueParts = Array.from(new Set(parts));
-      if (uniqueParts.length > 0) {
-        return `${uniqueParts.join(', ')} (${latitude.toFixed(4)}° N, ${longitude.toFixed(4)}° E)`;
-      }
-    }
-  } catch (err) {
-    console.warn('Reverse geocode error, using exact coordinates:', err.message);
+  if (!hasLocationConsent() && !force) {
+    return;
   }
 
-  // Direct precision coordinates fallback
-  return `Coordinates: ${latitude.toFixed(5)}° N, ${longitude.toFixed(5)}° E`;
-}
-
-/**
- * Fast IP-based real location fallback
- */
-async function fetchIPLocation() {
-  try {
-    const res = await fetch('https://ipwho.is/');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success !== false && data.city) {
-        const parts = [data.city, data.region, data.country].filter(Boolean);
-        const lat = data.latitude ? `${data.latitude.toFixed(4)}° N` : '';
-        const lon = data.longitude ? `${data.longitude.toFixed(4)}° E` : '';
-        const coords = lat && lon ? ` (${lat}, ${lon})` : '';
-        return `${parts.join(', ')}${coords}`;
-      }
-    }
-  } catch (err) {
-    console.warn('IP location fetch error:', err.message);
-  }
-  return null;
-}
-
-/**
- * Initiates precise location detection via GPS and IP
- */
-export function initLocationDetection() {
-  if (typeof window === 'undefined' || isDetecting) return;
-
-  const cachedTime = localStorage.getItem(STORAGE_KEY_TIMESTAMP);
-  const now = Date.now();
-  if (cachedTime && now - parseInt(cachedTime, 10) < CACHE_MAX_AGE_MS) {
-    const existing = localStorage.getItem(STORAGE_KEY_LOCATION);
-    if (existing && existing !== 'Detecting precise location...') {
-      return; // Cache is still fresh
-    }
-  }
-
-  isDetecting = true;
-
-  // 1. Trigger fast IP location immediately as baseline
-  fetchIPLocation().then((ipLoc) => {
-    if (ipLoc && !localStorage.getItem(STORAGE_KEY_COORDS)) {
-      localStorage.setItem(STORAGE_KEY_LOCATION, ipLoc);
-      localStorage.setItem(STORAGE_KEY_TIMESTAMP, Date.now().toString());
-      window.dispatchEvent(new CustomEvent('nodues:location_updated', { detail: { location: ipLoc } }));
-    }
-  }).catch(() => {});
-
-  // 2. Request high-accuracy GPS coordinates from device hardware
   if ('geolocation' in navigator) {
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        isDetecting = false;
-        const { latitude, longitude, accuracy } = pos.coords;
-        localStorage.setItem(STORAGE_KEY_COORDS, JSON.stringify({ latitude, longitude, accuracy }));
+      (pos) => {
+        // DPDP Act 2023: Round coordinates to ~2 decimal places (~1.1km coarse accuracy)
+        const coarseLat = Number(pos.coords.latitude.toFixed(2));
+        const coarseLon = Number(pos.coords.longitude.toFixed(2));
+        const locationText = `Coarse Coordinates: ${coarseLat}° N, ${coarseLon}° E (~1km)`;
 
-        const preciseText = await reverseGeocode(latitude, longitude);
-        localStorage.setItem(STORAGE_KEY_LOCATION, preciseText);
-        localStorage.setItem(STORAGE_KEY_TIMESTAMP, Date.now().toString());
-
+        localStorage.setItem(STORAGE_KEY_LOCATION, locationText);
         window.dispatchEvent(new CustomEvent('nodues:location_updated', { 
-          detail: { location: preciseText, coords: { latitude, longitude, accuracy } } 
+          detail: { location: locationText, coords: { latitude: coarseLat, longitude: coarseLon } } 
         }));
       },
-      async (err) => {
-        isDetecting = false;
-        console.info('Hardware GPS unavailable or permission denied, using IP geolocation:', err.message);
-        const ipLoc = await fetchIPLocation();
-        if (ipLoc) {
-          localStorage.setItem(STORAGE_KEY_LOCATION, ipLoc);
-          localStorage.setItem(STORAGE_KEY_TIMESTAMP, Date.now().toString());
-          window.dispatchEvent(new CustomEvent('nodues:location_updated', { detail: { location: ipLoc } }));
+      () => {
+        try {
+          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+          localStorage.setItem(STORAGE_KEY_LOCATION, `Offline Locale (${tz})`);
+        } catch (e) {
+          localStorage.setItem(STORAGE_KEY_LOCATION, 'Institutional Client');
         }
       },
       {
-        enableHighAccuracy: true,
-        timeout: 10000,
+        enableHighAccuracy: false,
+        timeout: 5000,
         maximumAge: 60000
       }
     );
-  } else {
-    isDetecting = false;
   }
 }
 
-/**
- * Returns accurate client device name, type, and real precise location
- */
-export function getClientDeviceMetadata() {
+export function getDeviceDetails() {
   if (typeof window === 'undefined') {
-    return {
-      deviceName: 'Web Client',
-      deviceType: 'Desktop',
-      location: 'Localhost (Node Environment)'
-    };
+    return { deviceName: 'Institutional Client', deviceType: 'Desktop' };
   }
 
-  const ua = navigator.userAgent || '';
-  const screenW = window.screen?.width || window.innerWidth || 1024;
-
-  // 1. Device Type Detection
+  const ua = navigator.userAgent;
   let deviceType = 'Desktop';
-  if (/ipad|tablet/i.test(ua) || (screenW >= 768 && screenW <= 1024 && /mobile/i.test(ua))) {
-    deviceType = 'Tablet';
-  } else if (/iphone|android.*mobile|mobile|ipod/i.test(ua) || screenW < 768) {
-    deviceType = 'Mobile';
-  }
+  let osName = 'Windows';
+  let browser = 'Browser';
 
-  // 2. OS Detection
-  let os = 'Windows PC';
-  if (/iphone/i.test(ua)) os = 'iPhone (iOS)';
-  else if (/ipad/i.test(ua)) os = 'iPad (iPadOS)';
-  else if (/android/i.test(ua)) os = 'Android Device';
-  else if (/macintosh|mac os x/i.test(ua)) os = 'macOS';
-  else if (/windows/i.test(ua)) os = 'Windows PC';
-  else if (/linux/i.test(ua)) os = 'Linux';
+  if (/mobile/i.test(ua)) deviceType = 'Mobile';
+  else if (/tablet|ipad/i.test(ua)) deviceType = 'Tablet';
 
-  // 3. Browser Detection
-  let browser = 'Chrome';
+  if (/windows/i.test(ua)) osName = 'Windows';
+  else if (/macintosh|mac os x/i.test(ua)) osName = 'macOS';
+  else if (/android/i.test(ua)) osName = 'Android';
+  else if (/iphone|ipad/i.test(ua)) osName = 'iOS';
+  else if (/linux/i.test(ua)) osName = 'Linux';
+
   if (/edg/i.test(ua)) browser = 'Edge';
-  else if (/chrome|crios/i.test(ua)) browser = 'Chrome';
-  else if (/safari/i.test(ua) && !/chrome/i.test(ua)) browser = 'Safari';
-  else if (/firefox|fxios/i.test(ua)) browser = 'Firefox';
+  else if (/chrome/i.test(ua)) browser = 'Chrome';
+  else if (/safari/i.test(ua)) browser = 'Safari';
+  else if (/firefox/i.test(ua)) browser = 'Firefox';
 
-  const deviceName = `${os} (${browser})`;
-  const location = getPreciseLocation();
-
-  return { deviceName, deviceType, location };
+  return {
+    deviceName: `${osName} (${browser})`,
+    deviceType
+  };
 }
 
-// Automatically start location resolution on load in browser
-if (typeof window !== 'undefined') {
-  initLocationDetection();
+export function getClientDeviceMetadata() {
+  const dev = getDeviceDetails();
+  return {
+    deviceName: dev.deviceName,
+    deviceType: dev.deviceType,
+    location: getPreciseLocation()
+  };
 }
-
-export default {
-  getPreciseLocation,
-  initLocationDetection,
-  getClientDeviceMetadata
-};

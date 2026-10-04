@@ -127,6 +127,25 @@ export const AuditLogsViewer = ({ role, title = 'System Audit & Activity Logs' }
     document.body.removeChild(link);
   };
 
+  const [verifyingChain, setVerifyingChain] = useState(false);
+  const [chainStatus, setChainStatus] = useState(null);
+
+  const handleVerifyTamperCheck = async () => {
+    setVerifyingChain(true);
+    try {
+      const res = await api.get('/audit-logs/verify');
+      if (res.data && res.data.success) {
+        setChainStatus(res.data);
+      } else {
+        setChainStatus({ valid: false, message: 'Verification failed.' });
+      }
+    } catch (err) {
+      setChainStatus({ valid: false, message: 'Error running cryptographic verification.' });
+    } finally {
+      setVerifyingChain(false);
+    }
+  };
+
   const getDeviceIcon = (deviceType) => {
     const dt = (deviceType || '').toLowerCase();
     if (dt.includes('mobile') || dt.includes('phone')) {
@@ -274,6 +293,16 @@ export const AuditLogsViewer = ({ role, title = 'System Audit & Activity Logs' }
             </button>
 
             <button
+              onClick={handleVerifyTamperCheck}
+              disabled={verifyingChain}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition-all disabled:opacity-50"
+              title="Cryptographically verify SHA-256 hash chains across system and clearance audit logs"
+            >
+              <ShieldCheck className={`w-3.5 h-3.5 ${verifyingChain ? 'animate-spin' : ''}`} />
+              <span>{verifyingChain ? 'Verifying Chain...' : 'Tamper Check'}</span>
+            </button>
+
+            <button
               onClick={handleExportCSV}
               disabled={logs.length === 0}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition-all disabled:opacity-50"
@@ -292,6 +321,40 @@ export const AuditLogsViewer = ({ role, title = 'System Audit & Activity Logs' }
             </button>
           </div>
         </div>
+
+        {/* Cryptographic Tamper Check Status Banner */}
+        {chainStatus && (
+          <div className={`p-4 rounded-xl border text-xs flex items-start gap-3 transition-all ${
+            chainStatus.valid 
+              ? 'bg-emerald-50/90 border-emerald-200 text-emerald-900' 
+              : 'bg-rose-50 border-rose-200 text-rose-900'
+          }`}>
+            <span className={`p-1.5 rounded-lg shrink-0 ${
+              chainStatus.valid ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
+            }`}>
+              <ShieldCheck className="w-4 h-4" />
+            </span>
+            <div className="space-y-1 flex-1">
+              <div className="font-bold flex items-center justify-between">
+                <span>{chainStatus.valid ? '✅ Cryptographic Integrity Verified' : '⚠️ Audit Chain Tampering Detected!'}</span>
+                <button 
+                  onClick={() => setChainStatus(null)} 
+                  className="text-slate-400 hover:text-slate-600 font-normal underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <p className="text-[11px] leading-relaxed">
+                {chainStatus.message}
+              </p>
+              <div className="flex flex-wrap gap-4 text-[10px] font-mono mt-1 pt-1 border-t border-emerald-200/60">
+                <span>System Logs Checked: <strong>{chainStatus.systemLogsVerified || 0}</strong></span>
+                <span>Clearance Logs Checked: <strong>{chainStatus.noduesLogsVerified || 0}</strong></span>
+                <span>SHA-256 Hash Chaining: <strong>{chainStatus.valid ? 'UNTAMPERED' : 'INVALID'}</strong></span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Filter Chips: Device Type */}
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">

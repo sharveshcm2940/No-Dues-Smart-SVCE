@@ -1,6 +1,7 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry, executeStageTransition } = require('../utils/workflowHelper');
+const { sanitizeStudentProfile, sanitizeRequest } = require('../utils/dataMasking');
 
 // Get Faculty Advisor (FA) Dashboard Statistics & Advisees
 exports.getFADashboard = async (req, res) => {
@@ -11,7 +12,7 @@ exports.getFADashboard = async (req, res) => {
     const advisor = await getOne('SELECT * FROM faculty_advisors WHERE employee_id = ?', [empId]);
 
     // Assigned advisees list
-    const advisees = await query(
+    const adviseesRaw = await query(
       `SELECT s.*,
         (SELECT COUNT(*) FROM borrow_records br WHERE br.register_number = s.register_number AND br.status = 'Issued') as active_books,
         (SELECT COALESCE(SUM(fine_amount), 0) FROM borrow_records br WHERE br.register_number = s.register_number AND br.fine_status = 'Unpaid') as fine_unpaid,
@@ -32,7 +33,7 @@ exports.getFADashboard = async (req, res) => {
     );
 
     // Pending FA Stage Approvals
-    const pendingFARequests = await query(`
+    const pendingFARequestsRaw = await query(`
       SELECT 
         nr.id as request_id,
         nr.request_number,
@@ -59,6 +60,9 @@ exports.getFADashboard = async (req, res) => {
         nr.student_name ASC`,
       [empId, advisor ? advisor.full_name : '']
     );
+
+    const advisees = adviseesRaw.map(s => sanitizeStudentProfile(s, req.user.role));
+    const pendingFARequests = pendingFARequestsRaw.map(r => sanitizeRequest(r, req.user.role));
 
     const approvedFACount = await getOne(`
       SELECT COUNT(*) as count 
@@ -97,6 +101,10 @@ exports.processFAAction = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Request ID and Action are required.' });
     }
 
+    if (!['Approve', 'Reject', 'Hold'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Invalid action specified.' });
+    }
+
     const advisor = await getOne('SELECT full_name FROM faculty_advisors WHERE employee_id = ?', [empId]);
     const approverName = advisor ? `${advisor.full_name} (Faculty Advisor)` : 'Faculty Advisor';
 
@@ -117,58 +125,25 @@ exports.processFAAction = async (req, res) => {
       });
     }
 
-    if (action === 'Approve') {
-      const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
-      const financeStage = stages.find(s => s.department_name === 'Finance');
-
-      if (!financeStage || financeStage.status !== 'Approved') {
-        return res.status(400).json({
-          success: false,
-          message: 'Faculty Advisor clearance is locked until Finance section clearance is approved.'
-        });
-      }
+    if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
+      return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });
     }
 
-    const newStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : 'Hold');
-
-    // Update Faculty Advisor Stage
-    await query(
-      `UPDATE nodues_stages 
-       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
-       WHERE request_id = ? AND department_name = 'Faculty Advisor'`,
-      [newStatus, approverName, remarks || 'Faculty Advisor approval granted.', requestId]
-    );
-
-    // Audit Log Entry
-    await logAuditEntry({
+    const transitionResult = await executeStageTransition({
       requestId,
       departmentName: 'Faculty Advisor',
-      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
-      actorName: approverName,
-      actorRole: 'faculty_advisor',
-      statusAfter: newStatus,
-      remarks: remarks || (action === 'Approve' ? 'Faculty Advisor clearance granted.' : 'Put on hold by Faculty Advisor.')
+      action,
+      remarks: remarks || (action === 'Approve' ? 'Faculty Advisor approval granted.' : 'Put on hold by Faculty Advisor.'),
+      actorUser: { username: empId, full_name: approverName, role: 'faculty_advisor' }
     });
 
-    if (action === 'Approve') {
-      await query(
-        `INSERT INTO notifications (target_user, title, message, type)
-         VALUES (?, ?, ?, ?)`,
-        [request.register_number, 'Faculty Advisor Approved', `Your Faculty Advisor ${approverName} approved your No-Dues request ${request.request_number}.`, 'success']
-      );
+    if (!transitionResult.success) {
+      return res.status(transitionResult.statusCode || 400).json({ success: false, message: transitionResult.message });
+    }
 
-      // Advance stage to DPC or HOD
-      await updateRequestProgress(requestId);
-    } else if (action === 'Reject' || action === 'Hold') {
+    if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
-
-      if (isReject) {
-        await query(
-          `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Faculty Advisor (Rejected)' WHERE id = ?`,
-          [requestId]
-        );
-      }
 
       await notifyStudentAndFA({
         registerNumber: request.register_number,
@@ -180,7 +155,7 @@ exports.processFAAction = async (req, res) => {
       });
     }
 
-    return res.json({ success: true, message: `Request ${request.request_number} marked as ${newStatus} by Faculty Advisor.` });
+    return res.json({ success: true, message: `Request ${request.request_number} marked as ${transitionResult.status} by Faculty Advisor.` });
 
   } catch (error) {
     console.error('Process FA Action Error:', error);
@@ -212,15 +187,17 @@ exports.bulkApproveAdvisees = async (req, res) => {
 
     let count = 0;
     for (const item of pendingStages) {
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Faculty Advisor.', updated_at = NOW() 
-         WHERE request_id = ? AND department_name = 'Faculty Advisor'`,
-        [approverName, item.request_id]
-      );
+      const transResult = await executeStageTransition({
+        requestId: item.request_id,
+        departmentName: 'Faculty Advisor',
+        action: 'Approve',
+        remarks: 'Bulk Approved by Faculty Advisor.',
+        actorUser: { username: empId, full_name: approverName, role: 'faculty_advisor' }
+      });
 
-      await updateRequestProgress(item.request_id);
-      count++;
+      if (transResult.success) {
+        count++;
+      }
     }
 
     return res.json({

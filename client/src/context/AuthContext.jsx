@@ -55,15 +55,6 @@ export const AuthProvider = ({ children }) => {
         deviceType: meta.deviceType
       });
       if (response.data.success) {
-        if (response.data.mfa_required) {
-          return {
-            success: false,
-            mfa_required: true,
-            mfa_token: response.data.mfa_token,
-            user_id: response.data.user_id,
-            username: response.data.username
-          };
-        }
         const { token, refreshToken, user } = response.data;
         setToken(token);
         setUser(user);
@@ -78,7 +69,8 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: response.data.message };
       }
     } catch (err) {
-      const msg = err.response?.data?.message || 'Authentication error. Please check your credentials.';
+      const isNetworkError = !err.response || err.code === 'ERR_NETWORK';
+      const msg = err.response?.data?.message || (isNetworkError ? 'Unable to connect to backend server (port 5000). Please ensure the backend is running.' : 'Invalid username or password. Please check your credentials.');
       setAuthError(msg);
       return { success: false, message: msg };
     } finally {
@@ -90,7 +82,12 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     setAuthError(null);
     try {
-      const response = await api.post('/auth/mfa/verify', { mfa_token, totp_code });
+      const response = await api.post('/auth/mfa/verify', { 
+        mfa_token, 
+        totp_code,
+        mfaPendingToken: mfa_token,
+        totpCode: totp_code
+      });
       if (response.data.success) {
         const { token, refreshToken, user } = response.data;
         setToken(token);
@@ -128,6 +125,20 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('nodues_token');
       localStorage.removeItem('nodues_refresh_token');
       localStorage.removeItem('nodues_user');
+      try {
+        sessionStorage.clear();
+      } catch (e) {
+        // Ignore sessionStorage error
+      }
+      // Purge all PWA Service Worker caches on logout
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        try {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        } catch (e) {
+          // Ignore cache deletion error
+        }
+      }
     }
   };
 

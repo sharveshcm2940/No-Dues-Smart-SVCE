@@ -1,274 +1,512 @@
-const { query, getOne } = require('../config/db');
+const { query, getOne, getPool } = require('../config/db');
+const { appendNoDuesAuditLog } = require('./auditChain');
+const { generateCertificateToken, computeCertificateHmac } = require('./certificateSigner');
+
+const SEQUENTIAL_STAGES = [
+  { order: 1, name: 'Department Library', role: 'library_staff' },
+  { order: 2, name: 'DPC', role: 'dpc' },
+  { order: 3, name: 'Central Library', role: 'main_library_staff' },
+  { order: 4, name: 'Faculty Advisor', role: 'faculty_advisor' },
+  { order: 5, name: 'Finance', role: 'finance' },
+  { order: 6, name: 'HOD', role: 'hod' }
+];
 
 /**
- * Recalculates and updates the current stage, progress percentage, and overall status
- * of a No-Dues request based on the sequential approval rules:
- * 1. Initial Parallel Stage: DPC + Central Library + Department Library receive simultaneously.
- * 2. Finance Stage: Unlocks ONLY when DPC, Central Library, and Department Library are ALL Approved.
- * 3. Faculty Advisor Stage: Unlocks ONLY when Finance is Approved.
- * 4. HOD Stage: Unlocks ONLY when Faculty Advisor is Approved.
- * 5. Rejections pause workflow progression without resetting previously approved stages.
+ * Executes a state transition for a No-Dues clearance stage with:
+ * 1. Database transaction
+ * 2. Row locking (SELECT ... FOR UPDATE) on both request and stage rows to prevent race conditions & double-approvals
+ * 3. Strict sequential stage order validation (Dept Library -> DPC -> Central Library -> Faculty Advisor -> Finance -> HOD)
+ * 4. Cryptographic hash-chained audit trail
+ */
+async function executeStageTransition({
+  requestId,
+  departmentName,
+  action,
+  remarks = '',
+  actorUser,
+  existingConnection = null
+}) {
+  const pool = getPool();
+  const conn = existingConnection || (await pool.getConnection());
+  const isOuterTx = Boolean(existingConnection);
+
+  if (!isOuterTx) {
+    await conn.beginTransaction();
+  }
+
+  try {
+    // 1. Lock the request row
+    const [requests] = await conn.query(
+      'SELECT * FROM nodues_requests WHERE id = ? FOR UPDATE',
+      [requestId]
+    );
+
+    if (!requests || requests.length === 0) {
+      if (!isOuterTx) await conn.rollback();
+      return { status: 404, message: 'Clearance request record not found.' };
+    }
+
+    const request = requests[0];
+
+    if (request.overall_status === 'Approved') {
+      if (!isOuterTx) await conn.rollback();
+      return { status: 400, message: 'Clearance request is already completed and approved.' };
+    }
+
+    if (request.overall_status === 'Cancelled') {
+      if (!isOuterTx) await conn.rollback();
+      return { status: 400, message: 'Cancelled clearance requests cannot be processed.' };
+    }
+
+    // 2. Lock all stage rows for this request
+    const [stages] = await conn.query(
+      'SELECT * FROM nodues_stages WHERE request_id = ? ORDER BY stage_order ASC FOR UPDATE',
+      [requestId]
+    );
+
+    const targetStage = stages.find(
+      s => s.department_name.toLowerCase() === departmentName.toLowerCase()
+    );
+
+    if (!targetStage) {
+      if (!isOuterTx) await conn.rollback();
+      return { success: false, statusCode: 404, message: `Stage '${departmentName}' not found for request #${requestId}.` };
+    }
+
+    if (action === 'Approve') {
+      if (targetStage.status === 'Approved') {
+        if (!isOuterTx) await conn.rollback();
+        return { success: false, statusCode: 400, message: `Stage '${targetStage.department_name}' is already approved.` };
+      }
+
+      // Enforce strict sequential stage order:
+      // All prior stages (stage_order < targetStage.stage_order) MUST be Approved
+      const priorUnapproved = stages.find(
+        s => s.stage_order < targetStage.stage_order && s.status !== 'Approved'
+      );
+
+      if (priorUnapproved) {
+        if (!isOuterTx) await conn.rollback();
+        return {
+          success: false,
+          statusCode: 400,
+          message: `Stage order violation: Clearance for '${targetStage.department_name}' requires prior approval from '${priorUnapproved.department_name}'.`
+        };
+      }
+    } else if (action === 'Reject') {
+      if (targetStage.status === 'Approved') {
+        if (!isOuterTx) await conn.rollback();
+        return { success: false, statusCode: 400, message: 'An already approved stage cannot be retroactively rejected without administrative revocation.' };
+      }
+    } else if (action === 'Resubmit') {
+      if (targetStage.status !== 'Rejected') {
+        if (!isOuterTx) await conn.rollback();
+        return { success: false, statusCode: 400, message: `Only rejected stages can be resubmitted. Current status: ${targetStage.status}` };
+      }
+    }
+
+    const actorName = actorUser ? (actorUser.full_name || actorUser.username) : 'Institutional Officer';
+    const actorRole = actorUser ? actorUser.role : 'staff';
+    const newStageStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : (action === 'Resubmit' ? 'Pending' : 'Hold'));
+
+    // 4. Update the target stage row
+    await conn.query(
+      `UPDATE nodues_stages 
+       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [newStageStatus, action === 'Resubmit' ? null : actorName, remarks || `${action} action recorded.`, targetStage.id]
+    );
+
+    // 5. Determine overall request status & next stages
+    let newOverallStatus = 'In Progress';
+    let newCurrentStage = targetStage.department_name;
+
+    if (action === 'Reject') {
+      newOverallStatus = 'Rejected';
+      newCurrentStage = `${targetStage.department_name} (Rejected)`;
+      await conn.query(
+        `UPDATE nodues_requests 
+         SET overall_status = 'Rejected', current_stage = ?, progress_percentage = 0
+         WHERE id = ?`,
+        [newCurrentStage, requestId]
+      );
+    } else if (action === 'Hold') {
+      newOverallStatus = 'In Progress';
+      newCurrentStage = `${targetStage.department_name} (On Hold)`;
+      await conn.query(
+        `UPDATE nodues_requests 
+         SET current_stage = ?
+         WHERE id = ?`,
+        [newCurrentStage, requestId]
+      );
+    } else if (action === 'Resubmit') {
+      newOverallStatus = 'In Progress';
+      newCurrentStage = targetStage.department_name;
+      await conn.query(
+        `UPDATE nodues_requests 
+         SET overall_status = 'In Progress', current_stage = ?, resubmission_count = COALESCE(resubmission_count, 0) + 1
+         WHERE id = ?`,
+        [newCurrentStage, requestId]
+      );
+    } else if (action === 'Approve') {
+      // Find next unapproved sequential stage (skipping auto-exempted stages)
+      const remainingUnapproved = stages
+        .filter(s => s.stage_order > targetStage.stage_order && s.status !== 'Approved');
+      const nextStage = remainingUnapproved.length > 0 ? remainingUnapproved[0] : null;
+
+      if (nextStage) {
+        // Unlock next stage to Pending
+        await conn.query(
+          `UPDATE nodues_stages SET status = 'Pending', updated_at = NOW() WHERE id = ?`,
+          [nextStage.id]
+        );
+        newCurrentStage = nextStage.department_name;
+
+        // Calculate progress percentage
+        const approvedCount = stages.filter(s => s.status === 'Approved').length + 1; // +1 for the one we just approved
+        const progressPercentage = Math.round((approvedCount / stages.length) * 100);
+
+        await conn.query(
+          `UPDATE nodues_requests 
+           SET overall_status = 'In Progress', current_stage = ?, progress_percentage = ?
+           WHERE id = ?`,
+          [newCurrentStage, progressPercentage, requestId]
+        );
+
+        // Notify next department
+        await conn.query(
+          `INSERT INTO notifications (target_user, title, message, type)
+           VALUES (?, ?, ?, 'info')`,
+          [
+            nextStage.department_name,
+            `Pending No-Dues Clearance: ${request.student_name}`,
+            `Request #${request.request_number} has been approved by ${targetStage.department_name} and is now awaiting clearance from ${nextStage.department_name}.`
+          ]
+        );
+      } else {
+        // Final stage (HOD) Approved: Full completion & Certificate Issuance
+        newOverallStatus = 'Approved';
+        newCurrentStage = 'Completed';
+        const completionDate = new Date();
+        const certNo = request.certificate_number || `CERT-SVCE-IT-2026-${String(requestId).padStart(4, '0')}`;
+        const certToken = request.certificate_token || generateCertificateToken();
+        const certHmac = computeCertificateHmac({
+          certificateNumber: certNo,
+          registerNumber: request.register_number,
+          issueDate: completionDate,
+          requestId
+        });
+
+        await conn.query(
+          `UPDATE nodues_requests 
+           SET overall_status = 'Approved', progress_percentage = 100, current_stage = 'Completed', 
+               completion_date = ?, certificate_number = ?, certificate_token = ?, certificate_hmac = ?, 
+               certificate_version = COALESCE(certificate_version, 1), certificate_status = 'Valid'
+           WHERE id = ?`,
+          [completionDate, certNo, certToken, certHmac, requestId]
+        );
+
+        // Notify student of completion
+        await conn.query(
+          `INSERT INTO notifications (target_user, title, message, type)
+           VALUES (?, ?, ?, 'success')`,
+          [
+            request.register_number,
+            'No-Dues Clearance Completed 🎉',
+            `Congratulations! Your No-Dues clearance request ${request.request_number} has been fully approved by HOD. Your official Digital Clearance Certificate (${certNo}) is now generated and verifiable.`
+          ]
+        );
+      }
+    }
+
+    // 6. Cryptographically hash-chained audit log
+    await appendNoDuesAuditLog({
+      requestId,
+      departmentName: targetStage.department_name,
+      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : (action === 'Resubmit' ? 'Re-submission' : 'Hold')),
+      actorName,
+      actorRole,
+      statusAfter: newStageStatus,
+      remarks: remarks || `${action} recorded.`
+    }, conn);
+
+    if (!isOuterTx) {
+      await conn.commit();
+    }
+
+    return {
+      success: true,
+      requestId,
+      departmentName: targetStage.department_name,
+      stageStatus: newStageStatus,
+      overallStatus: newOverallStatus,
+      currentStage: newCurrentStage
+    };
+
+  } catch (err) {
+    if (!isOuterTx) {
+      await conn.rollback();
+    }
+    throw err;
+  } finally {
+    if (!isOuterTx) {
+      conn.release();
+    }
+  }
+}
+
+/**
+ * Fallback recalculation helper for query views
  */
 async function updateRequestProgress(requestId) {
   try {
     const request = await getOne('SELECT * FROM nodues_requests WHERE id = ?', [requestId]);
     if (!request) return null;
 
-    const student = await getOne('SELECT * FROM students WHERE register_number = ?', [request.register_number]);
-    const isFourthYear = (request.year && (request.year.includes('IV') || request.year.includes('4th'))) ||
-                        (student && student.year && (student.year.includes('IV') || student.year.includes('4th')));
-
     const stages = await query(
       'SELECT * FROM nodues_stages WHERE request_id = ? ORDER BY stage_order ASC',
       [requestId]
     );
 
-    const dpcStage = stages.find(s => s.department_name === 'DPC');
-    const mainLibStage = stages.find(s => s.department_name === 'Central Library');
-    const deptLibStage = stages.find(s => s.department_name === 'Department Library');
-    const financeStage = stages.find(s => s.department_name === 'Finance');
-    const faStage = stages.find(s => s.department_name === 'Faculty Advisor');
-    const hodStage = stages.find(s => s.department_name === 'HOD');
+    const approvedCount = stages.filter(s => s.status === 'Approved').length;
+    const progress = Math.round((approvedCount / (stages.length || 6)) * 100);
 
-    // Auto-approve DPC stage for non-4th year students if it's still pending
-    if (!isFourthYear && dpcStage && dpcStage.status === 'Pending') {
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = 'System (Auto-Cleared)', remarks = 'Exempted for non-final year student.', updated_at = NOW()
-         WHERE id = ?`,
-        [dpcStage.id]
-      );
-      dpcStage.status = 'Approved';
-      dpcStage.approved_by = 'System (Auto-Cleared)';
-    }
-
-    // Check for any Rejected stage
-    const rejectedStage = stages.find(s => s.status === 'Rejected');
-    if (rejectedStage) {
-      let rejectedStageName = `${rejectedStage.department_name} (Rejected)`;
-      if (rejectedStage.department_name === 'Finance') {
-        rejectedStageName = 'Finance Rejected / Dues Pending';
-      }
-
-      await query(
-        `UPDATE nodues_requests 
-         SET overall_status = 'Rejected', current_stage = ?, progress_percentage = 0
-         WHERE id = ?`,
-        [rejectedStageName, requestId]
-      );
-      return { status: 'Rejected', progress: 0, stage: rejectedStageName };
-    }
-
-    // Initial 3 Parallel Departments (DPC, Central Library, Dept Library)
-    const initialStages = [dpcStage, mainLibStage, deptLibStage].filter(Boolean);
-    const approvedInitialCount = initialStages.filter(s => s.status === 'Approved').length;
-    const allInitialApproved = approvedInitialCount === initialStages.length;
-
-    let newStageName = '';
-    let newProgress = 15;
-    let newOverallStatus = 'In Progress';
-
-    if (!allInitialApproved) {
-      const pendingDepts = initialStages.filter(s => s.status !== 'Approved').map(s => s.department_name);
-      if (approvedInitialCount === 0) {
-        newProgress = 15;
-        newStageName = 'Pending DPC + Central Library + Department Library Approval';
-      } else {
-        newProgress = 15 + (approvedInitialCount * 10);
-        newStageName = `Initial Approvals (${approvedInitialCount} of 3 cleared - Pending: ${pendingDepts.join(', ')})`;
-      }
-    } else {
-      // All 3 initial departments have approved! Check/Unlock Finance
-      if (financeStage) {
-        if (financeStage.status === 'Locked') {
-          await query(
-            `UPDATE nodues_stages SET status = 'Pending', updated_at = NOW() WHERE id = ?`,
-            [financeStage.id]
-          );
-          financeStage.status = 'Pending';
-
-          // Notify Finance Admin & Student about unlocked stage
-          await query(
-            `INSERT INTO notifications (target_user, title, message, type)
-             VALUES (?, ?, ?, ?)`,
-            [request.register_number, 'Finance Approval Pending', `DPC, Central Library, and Department Library have approved request ${request.request_number}. Your request is now pending Finance clearance.`, 'info']
-          );
-          await query(
-            `INSERT INTO notifications (target_user, title, message, type)
-             VALUES (?, ?, ?, ?)`,
-            ['EMP-FIN-IT-01', 'New No-Dues Finance Approval Request', `Student ${request.student_name} (${request.register_number}) has cleared all initial library & DPC approvals. Request ${request.request_number} is pending Finance review.`, 'info']
-          );
-        }
-
-        if (financeStage.status === 'Pending') {
-          newStageName = 'Pending Finance Approval';
-          newProgress = 50;
-        } else if (financeStage.status === 'Approved') {
-          // Finance approved! Check/Unlock FA Stage
-          if (faStage) {
-            if (faStage.status === 'Locked') {
-              await query(
-                `UPDATE nodues_stages SET status = 'Pending', updated_at = NOW() WHERE id = ?`,
-                [faStage.id]
-              );
-              faStage.status = 'Pending';
-
-              // Notify FA & Student about unlocked stage
-              const faEmpId = student ? student.advisor_emp_id : null;
-              await query(
-                `INSERT INTO notifications (target_user, title, message, type)
-                 VALUES (?, ?, ?, ?)`,
-                [request.register_number, 'Pending FA Approval', `Finance clearance granted for request ${request.request_number}. Your request is now pending Faculty Advisor approval.`, 'info']
-              );
-              if (faEmpId) {
-                await query(
-                  `INSERT INTO notifications (target_user, title, message, type)
-                   VALUES (?, ?, ?, ?)`,
-                  [faEmpId, 'Advisee Clearance Pending', `Finance approved student ${request.student_name}'s request ${request.request_number}. Pending your FA review.`, 'info']
-                );
-              }
-            }
-
-            if (faStage.status === 'Pending') {
-              newStageName = 'Pending FA Approval';
-              newProgress = 75;
-            } else if (faStage.status === 'Approved') {
-              // FA approved! Check/Unlock HOD Stage
-              if (hodStage) {
-                if (hodStage.status === 'Locked') {
-                  await query(
-                    `UPDATE nodues_stages SET status = 'Pending', updated_at = NOW() WHERE id = ?`,
-                    [hodStage.id]
-                  );
-                  hodStage.status = 'Pending';
-
-                  // Notify HOD & Student about unlocked stage
-                  await query(
-                    `INSERT INTO notifications (target_user, title, message, type)
-                     VALUES (?, ?, ?, ?)`,
-                    [request.register_number, 'Pending HOD Approval', `Faculty Advisor approved request ${request.request_number}. Your request is now pending final HOD approval.`, 'info']
-                  );
-                  await query(
-                    `INSERT INTO notifications (target_user, title, message, type)
-                     VALUES (?, ?, ?, ?)`,
-                    ['EMP-HOD-IT-01', 'Pending HOD Final Approval', `Faculty Advisor approved student ${request.student_name}'s request ${request.request_number}. Pending final HOD sign-off.`, 'info']
-                  );
-                }
-
-                if (hodStage.status === 'Pending') {
-                  newStageName = 'Pending HOD Approval';
-                  newProgress = 90;
-                } else if (hodStage.status === 'Approved') {
-                  // All required stages are approved!
-                  newOverallStatus = 'Approved';
-                  newStageName = 'No Due Request Approved / Completed';
-                  newProgress = 100;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    let certNo = request.certificate_number;
-    let certToken = request.certificate_token;
-    if (newOverallStatus === 'Approved') {
-      if (!certNo) {
-        certNo = `CERT-SVCE-IT-2026-${String(requestId).padStart(4, '0')}`;
-      }
-      const { generateCertificateToken, computeCertificateHmac } = require('./certificateSigner');
-      if (!certToken) {
-        certToken = generateCertificateToken();
-      }
-      const completionDate = request.completion_date || new Date();
-      const certHmac = computeCertificateHmac({
-        certificateNumber: certNo,
-        registerNumber: request.register_number,
-        issueDate: completionDate,
-        requestId
-      });
-      await query(
-        `UPDATE nodues_requests 
-         SET overall_status = 'Approved', progress_percentage = 100, current_stage = 'Completed', 
-             certificate_number = ?, certificate_token = ?, certificate_hmac = ?, certificate_version = COALESCE(certificate_version, 1),
-             certificate_status = COALESCE(certificate_status, 'Valid'), completion_date = COALESCE(completion_date, NOW())
-         WHERE id = ?`,
-        [certNo, certToken, certHmac, requestId]
-      );
-    } else {
-      await query(
-        `UPDATE nodues_requests 
-         SET overall_status = ?, progress_percentage = ?, current_stage = ?
-         WHERE id = ?`,
-        [newOverallStatus, newProgress, newStageName, requestId]
-      );
-    }
+    await query('UPDATE nodues_requests SET progress_percentage = ? WHERE id = ?', [progress, requestId]);
 
     return {
-      status: newOverallStatus,
-      progress: newProgress,
-      stage: newStageName,
-      certificateNumber: certNo
+      status: request.overall_status,
+      progress,
+      stage: request.current_stage
     };
-
-  } catch (error) {
-    console.error('Update Request Progress Error:', error);
+  } catch (err) {
+    console.error('updateRequestProgress error:', err);
     return null;
   }
 }
 
 /**
- * Logs an audit entry for tracking approval, rejection, hold, or student re-submission history.
+ * Synchronize progress percentages across all clearance requests in nodues_requests
  */
-async function logAuditEntry({ requestId, departmentName, actionType, actorName, actorRole, statusAfter, remarks, studentComment, attachmentUrl, req = null }) {
+async function syncAllRequestsProgress() {
   try {
-    await query(
-      `INSERT INTO nodues_audit_logs (
-        request_id, department_name, action_type, actor_name, actor_role, status_after, remarks, student_comment, attachment_url, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [requestId, departmentName, actionType, actorName, actorRole, statusAfter, remarks || null, studentComment || null, attachmentUrl || null]
-    );
-
-    // Mirror to system_audit_logs with device name, device type, location and IP address
-    try {
-      const { logAuditEvent } = require('./auditLogger');
-      await logAuditEvent({
-        req,
-        user: {
-          username: actorName || 'STAFF',
-          full_name: actorName || 'Institutional Staff',
-          role: actorRole || 'staff'
-        },
-        action: actionType || 'STAGE_ACTION',
-        details: `${departmentName}: Status '${statusAfter}' for Request #${requestId}. ${remarks || ''}`.trim(),
-        module: departmentName || 'No-Dues Clearance'
-      });
-    } catch (auditErr) {
-      console.warn('System audit log mirror error:', auditErr.message);
+    const requests = await query('SELECT id FROM nodues_requests');
+    if (requests && requests.length > 0) {
+      for (const req of requests) {
+        await updateRequestProgress(req.id);
+      }
     }
   } catch (err) {
-    console.error('Log Audit Entry Error:', err);
+    console.error('syncAllRequestsProgress error:', err);
   }
 }
 
 /**
- * Recalculates all requests in the database to sync progress and current stage.
+ * Logs an audit entry using append-only cryptographic hash chaining
  */
-async function syncAllRequestsProgress() {
+async function logAuditEntry({ requestId, departmentName, actionType, actorName, actorRole, statusAfter, remarks, studentComment, attachmentUrl, req = null }) {
   try {
-    const allRequests = await query('SELECT id FROM nodues_requests');
-    for (const r of allRequests) {
-      await updateRequestProgress(r.id);
-    }
-    console.log(`Synced ${allRequests.length} clearance request progress states.`);
+    return await appendNoDuesAuditLog({
+      requestId,
+      departmentName,
+      actionType,
+      actorName,
+      actorRole,
+      statusAfter,
+      remarks,
+      studentComment,
+      attachmentUrl
+    });
   } catch (err) {
-    console.error('Sync All Requests Progress Error:', err);
+    console.error('logAuditEntry error:', err);
+  }
+}
+
+/**
+ * Reopens a previously approved clearance stage with mandatory reason,
+ * resets all downstream dependent stages to 'Pending', revokes any issued certificate,
+ * notifies the student and advisor, and audit-logs the event with hash chaining.
+ */
+async function reopenStage({ requestId, departmentName, reason, actorUser }, existingConn = null) {
+  if (!reason || typeof reason !== 'string' || reason.trim().length < 5) {
+    return {
+      success: false,
+      statusCode: 400,
+      message: 'A mandatory reason (minimum 5 characters) is required to reopen an approved stage.'
+    };
+  }
+
+  const pool = getPool();
+  const conn = existingConn || (await pool.getConnection());
+  const isOuterTx = !!existingConn;
+
+  try {
+    if (!isOuterTx) {
+      await conn.beginTransaction();
+    }
+
+    // 1. Lock the request row
+    const [requestRows] = await conn.query('SELECT * FROM nodues_requests WHERE id = ? FOR UPDATE', [requestId]);
+    if (!requestRows || requestRows.length === 0) {
+      if (!isOuterTx) await conn.rollback();
+      return { success: false, statusCode: 404, message: 'Clearance request not found.' };
+    }
+    const request = requestRows[0];
+
+    // 2. Lock all stage rows
+    const [stages] = await conn.query(
+      'SELECT * FROM nodues_stages WHERE request_id = ? ORDER BY stage_order ASC FOR UPDATE',
+      [requestId]
+    );
+
+    const targetStage = stages.find(
+      s => s.department_name.toLowerCase() === departmentName.toLowerCase()
+    );
+
+    if (!targetStage) {
+      if (!isOuterTx) await conn.rollback();
+      return { success: false, statusCode: 404, message: `Stage '${departmentName}' not found for request #${requestId}.` };
+    }
+
+    if (targetStage.status !== 'Approved') {
+      if (!isOuterTx) await conn.rollback();
+      return {
+        success: false,
+        statusCode: 400,
+        message: `Stage '${targetStage.department_name}' is not currently approved (Current status: ${targetStage.status}). Only approved stages can be reopened.`
+      };
+    }
+
+    // 3. Authorization verification
+    // Authorized: HOD, Admin, or the specific department officer for this stage
+    const actorRole = actorUser ? actorUser.role : '';
+    const deptRoleMap = {
+      'Department Library': ['library_staff', 'hod', 'admin'],
+      'DPC': ['dpc', 'hod', 'admin'],
+      'Central Library': ['main_library_staff', 'hod', 'admin'],
+      'Faculty Advisor': ['faculty_advisor', 'hod', 'admin'],
+      'Finance': ['finance', 'hod', 'admin'],
+      'HOD': ['hod', 'admin']
+    };
+
+    const allowedRoles = deptRoleMap[targetStage.department_name] || ['hod', 'admin'];
+    if (!allowedRoles.includes(actorRole)) {
+      if (!isOuterTx) await conn.rollback();
+      return {
+        success: false,
+        statusCode: 403,
+        message: `Unauthorized: Role '${actorRole}' is not permitted to reopen '${targetStage.department_name}'. Required: ${allowedRoles.join(', ')}.`
+      };
+    }
+
+    const actorName = actorUser ? (actorUser.full_name || actorUser.username) : 'Institutional Officer';
+    const cleanReason = reason.trim();
+
+    // 4. Update the target stage to 'Hold' with reopening remarks
+    await conn.query(
+      `UPDATE nodues_stages 
+       SET status = 'Hold', approved_by = NULL, remarks = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [`Reopened by ${actorName}: ${cleanReason}`, targetStage.id]
+    );
+
+    // 5. Reset all downstream dependent stages (stage_order > targetStage.stage_order)
+    const downstreamStages = stages.filter(s => s.stage_order > targetStage.stage_order);
+    for (const downStage of downstreamStages) {
+      await conn.query(
+        `UPDATE nodues_stages 
+         SET status = 'Pending', approved_by = NULL, remarks = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [`Reset due to reopening of ${targetStage.department_name}: ${cleanReason}`, downStage.id]
+      );
+    }
+
+    // 6. Revoke any issued certificate and reset overall_status to 'In Progress'
+    const wasCompleted = request.overall_status === 'Approved' || !!request.certificate_number;
+    let certRevoked = false;
+
+    if (wasCompleted || request.certificate_status === 'Valid') {
+      await conn.query(
+        `UPDATE nodues_requests 
+         SET certificate_status = 'Revoked',
+             revocation_reason = ?,
+             revoked_by = ?,
+             revoked_at = NOW(),
+             certificate_token = NULL,
+             certificate_hmac = NULL,
+             certificate_number = NULL,
+             completion_date = NULL
+         WHERE id = ?`,
+        [`Stage '${targetStage.department_name}' reopened: ${cleanReason}`, actorName, requestId]
+      );
+      certRevoked = true;
+    }
+
+    // Recalculate progress: count remaining approved stages
+    const remainingApproved = stages.filter(s => s.stage_order < targetStage.stage_order && s.status === 'Approved').length;
+    const newProgress = Math.round((remainingApproved / (stages.length || 6)) * 100);
+
+    await conn.query(
+      `UPDATE nodues_requests 
+       SET overall_status = 'In Progress',
+           current_stage = ?,
+           progress_percentage = ?
+       WHERE id = ?`,
+      [`${targetStage.department_name} (Reopened)`, newProgress, requestId]
+    );
+
+    // 7. Append-only cryptographic audit log
+    await appendNoDuesAuditLog({
+      requestId,
+      departmentName: targetStage.department_name,
+      actionType: 'Stage Reopened',
+      actorName,
+      actorRole,
+      statusAfter: 'Hold',
+      remarks: `Stage reopened. Reason: ${cleanReason}${certRevoked ? ' [Issued certificate was revoked]' : ''}`
+    }, conn);
+
+    // 8. Notifications
+    await conn.query(
+      `INSERT INTO notifications (target_user, title, message, type)
+       VALUES (?, ?, ?, 'warning')`,
+      [
+        request.register_number,
+        `Clearance Stage Reopened: ${targetStage.department_name}`,
+        `Your No-Dues clearance for ${targetStage.department_name} has been reopened by ${actorName}. Reason: ${cleanReason}. Subsequent clearance stages have been placed on hold.`
+      ]
+    );
+
+    if (!isOuterTx) {
+      await conn.commit();
+    }
+
+    return {
+      success: true,
+      requestId,
+      departmentName: targetStage.department_name,
+      reopenedBy: actorName,
+      downstreamStagesReset: downstreamStages.length,
+      certificateRevoked: certRevoked,
+      newOverallStatus: 'In Progress',
+      newProgress
+    };
+  } catch (err) {
+    if (!isOuterTx) {
+      await conn.rollback();
+    }
+    throw err;
+  } finally {
+    if (!isOuterTx) {
+      conn.release();
+    }
   }
 }
 
 module.exports = {
+  SEQUENTIAL_STAGES,
+  executeStageTransition,
+  reopenStage,
   updateRequestProgress,
-  logAuditEntry,
-  syncAllRequestsProgress
+  syncAllRequestsProgress,
+  logAuditEntry
 };

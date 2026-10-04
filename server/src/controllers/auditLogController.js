@@ -120,3 +120,27 @@ exports.recordClientAction = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to record audit event.' });
   }
 };
+
+exports.verifyAuditLogs = async (req, res) => {
+  try {
+    const { verifyAuditChain } = require('../utils/auditChain');
+    const sysResult = await verifyAuditChain('system_audit_logs');
+    const noduesResult = await verifyAuditChain('nodues_audit_logs');
+
+    const isTampered = !sysResult.valid || !noduesResult.valid;
+
+    return res.json({
+      success: true,
+      valid: !isTampered,
+      tampered: isTampered,
+      systemLogsVerified: sysResult.verifiedCount,
+      noduesLogsVerified: noduesResult.verifiedCount,
+      systemAuditChain: sysResult,
+      noduesAuditChain: noduesResult,
+      message: isTampered ? 'Tampering detected in audit log hash chain!' : 'Cryptographic audit log chains are intact and verified.'
+    });
+  } catch (err) {
+    console.error('Error verifying audit logs:', err);
+    return res.status(500).json({ success: false, message: 'Failed to verify audit logs integrity.' });
+  }
+};

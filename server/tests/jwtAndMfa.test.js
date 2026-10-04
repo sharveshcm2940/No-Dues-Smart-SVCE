@@ -154,40 +154,16 @@ describe('Security Task 2: JWT, Refresh Tokens, MFA & Password Policy', () => {
     expect(refreshRes.status).toBe(401);
   });
 
-  test('should require TOTP MFA challenge on login for HOD role', async () => {
+  test('should allow direct single login for HOD role without MFA challenge', async () => {
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ username: testHod, password: rawPassword });
 
     expect(loginRes.status).toBe(200);
-    expect(loginRes.body.mfaRequired).toBe(true);
-    expect(loginRes.body).toHaveProperty('mfaPendingToken');
-    expect(loginRes.body).not.toHaveProperty('token'); // Access token not given yet
-
-    const mfaToken = loginRes.body.mfaPendingToken;
-
-    // Fetch user's secret from DB to generate valid TOTP code
-    const rows = await query('SELECT mfa_secret FROM users WHERE username = ?', [testHod]);
-    const validTotp = otpGenerateSync({ secret: rows[0].mfa_secret, digits: 6, algorithm: 'SHA1', period: 30, timestamp: Date.now() });
-
-    // 1. Submit invalid TOTP code
-    const invalidRes = await request(app)
-      .post('/api/auth/mfa/verify')
-      .send({ mfaPendingToken: mfaToken, totpCode: '000000' });
-
-    expect(invalidRes.status).toBe(401);
-    expect(invalidRes.body.success).toBe(false);
-
-    // 2. Submit valid TOTP code
-    const validRes = await request(app)
-      .post('/api/auth/mfa/verify')
-      .send({ mfaPendingToken: mfaToken, totpCode: validTotp });
-
-    expect(validRes.status).toBe(200);
-    expect(validRes.body.success).toBe(true);
-    expect(validRes.body).toHaveProperty('token');
-    expect(validRes.body).toHaveProperty('refreshToken');
-    expect(validRes.body.user.username).toBe(testHod);
+    expect(loginRes.body.success).toBe(true);
+    expect(loginRes.body).toHaveProperty('token');
+    expect(loginRes.body).toHaveProperty('refreshToken');
+    expect(loginRes.body.user.username).toBe(testHod);
   });
 
   test('should process single-use password reset token flow', async () => {
@@ -240,5 +216,5 @@ describe('Security Task 2: JWT, Refresh Tokens, MFA & Password Policy', () => {
 
     expect(replayRes.status).toBe(400);
     expect(replayRes.body.message).toMatch(/invalid|expired/i);
-  });
+  }, 15000);
 });

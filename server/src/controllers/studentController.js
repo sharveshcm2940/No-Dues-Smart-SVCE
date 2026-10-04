@@ -1,5 +1,6 @@
-const { query, getOne } = require('../config/db');
-const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
+const { query, getOne, getPool } = require('../config/db');
+const { updateRequestProgress, logAuditEntry, executeStageTransition } = require('../utils/workflowHelper');
+const { appendNoDuesAuditLog } = require('../utils/auditChain');
 const { logAuditEvent } = require('../utils/auditLogger');
 
 // Get Student Dashboard Data
@@ -91,6 +92,10 @@ exports.getStudentDashboard = async (req, res) => {
 
 // Submit No-Dues Request
 exports.submitNoDuesRequest = async (req, res) => {
+  const pool = getPool();
+  const conn = await pool.getConnection();
+  await conn.beginTransaction();
+
   try {
     const regNo = req.user.username;
     const { 
@@ -118,41 +123,45 @@ exports.submitNoDuesRequest = async (req, res) => {
     } = req.body || {};
 
     // 1. Check if student already has an active No-Dues request in progress
-    const inProgressReq = await getOne(
-      `SELECT * FROM nodues_requests WHERE register_number = ? AND overall_status = 'In Progress'`,
+    const [inProgressReqs] = await conn.query(
+      `SELECT * FROM nodues_requests WHERE register_number = ? AND overall_status = 'In Progress' FOR UPDATE`,
       [regNo]
     );
 
-    if (inProgressReq) {
+    if (inProgressReqs && inProgressReqs.length > 0) {
+      await conn.rollback();
       return res.status(400).json({
         success: false,
-        message: `You already have an active No-Dues request (${inProgressReq.request_number}) in progress. A student can only apply for one No-Dues request at a time.`
+        message: `You already have an active No-Dues request (${inProgressReqs[0].request_number}) in progress. A student can only apply for one No-Dues request at a time.`
       });
     }
 
     // 2. Check if student already has an approved request
-    const approvedReq = await getOne(
-      `SELECT * FROM nodues_requests WHERE register_number = ? AND overall_status = 'Approved'`,
+    const [approvedReqs] = await conn.query(
+      `SELECT * FROM nodues_requests WHERE register_number = ? AND overall_status = 'Approved' FOR UPDATE`,
       [regNo]
     );
 
-    if (approvedReq) {
+    if (approvedReqs && approvedReqs.length > 0) {
+      await conn.rollback();
       return res.status(400).json({
         success: false,
-        message: `Your No-Dues clearance application (${approvedReq.request_number}) has already been fully approved and completed.`
+        message: `Your No-Dues clearance application (${approvedReqs[0].request_number}) has already been fully approved and completed.`
       });
     }
 
-    const student = await getOne('SELECT * FROM students WHERE register_number = ?', [regNo]);
-    if (!student) {
+    const [students] = await conn.query('SELECT * FROM students WHERE register_number = ?', [regNo]);
+    if (!students || students.length === 0) {
+      await conn.rollback();
       return res.status(404).json({ success: false, message: 'Student profile not found.' });
     }
+    const student = students[0];
 
-    const maxIdRow = await getOne('SELECT MAX(id) as max_id FROM nodues_requests');
-    const nextNum = (maxIdRow && maxIdRow.max_id ? maxIdRow.max_id : 0) + 1;
+    const [maxIdRows] = await conn.query('SELECT MAX(id) as max_id FROM nodues_requests');
+    const nextNum = (maxIdRows && maxIdRows[0] && maxIdRows[0].max_id ? maxIdRows[0].max_id : 0) + 1;
     const reqNum = `NDR-2026-${String(nextNum).padStart(3, '0')}-${Date.now().toString().slice(-4)}`;
 
-    const newReq = await query(
+    const [insertResult] = await conn.query(
       `INSERT INTO nodues_requests (
         request_number, register_number, student_name, id_card_number, department, year, overall_status, progress_percentage, current_stage,
         career_option, company_name, job_designation, ctc_package, offer_letter_url,
@@ -161,7 +170,7 @@ exports.submitNoDuesRequest = async (req, res) => {
         startup_name, business_idea, business_details, pitch_deck_url
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 0, 'Phase 1 Review (DPC / Central Library / Dept Library)',
+        reqNum, regNo, student.full_name, student.id_card_number, student.department, student.year, 'In Progress', 0, 'Department Library',
         career_option || null, company_name || null, job_designation || null, ctc_package || null, offer_letter_url || null,
         higher_college_name || null, higher_degree || null, higher_app_form_url || null, higher_scorecard_url || null, higher_letter_url || null, higher_contact || null,
         exam_name || null, exam_reg_no || null, admit_card_url || null, exam_letter_url || null, exam_details || null,
@@ -169,55 +178,55 @@ exports.submitNoDuesRequest = async (req, res) => {
       ]
     );
 
-    const isFourthYear = student.year && (student.year.includes('IV') || student.year.includes('4th'));
+    const requestId = insertResult.insertId;
+    const isFourthYear = Boolean(student.year && (student.year.includes('IV') || student.year.includes('4th')));
 
+    // Sequential 6-stage clearance workflow:
+    // 1. Dept Library -> 2. DPC -> 3. Central Library -> 4. Faculty Advisor -> 5. Finance -> 6. HOD
     const stages = [
-      { name: 'DPC', order: 1, status: isFourthYear ? 'Pending' : 'Approved', approved_by: isFourthYear ? null : 'System (Auto-Cleared)', remarks: isFourthYear ? (career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting DPC / placement verification.') : 'Not applicable for non-final year students.' },
-      { name: 'Department Library', order: 2, status: 'Pending', approved_by: null, remarks: remarks || 'Awaiting Department Library clearance review.' },
-      { name: 'Central Library', order: 3, status: 'Pending', approved_by: null, remarks: 'Awaiting Central Library clearance review.' },
-      { name: 'Finance', order: 4, status: 'Pending', approved_by: null, remarks: 'Awaiting Finance clearance review.' },
-      { name: 'Faculty Advisor', order: 5, status: 'Pending', approved_by: null, remarks: 'Awaiting Faculty Advisor review.' },
-      { name: 'HOD', order: 6, status: 'Pending', approved_by: null, remarks: 'Awaiting HOD final review.' }
+      { name: 'Department Library', order: 1, status: 'Pending', approved_by: null, remarks: remarks || 'Awaiting Department Library clearance review.' },
+      { name: 'DPC', order: 2, status: isFourthYear ? 'Locked' : 'Approved', approved_by: isFourthYear ? null : 'System (Auto-Cleared)', remarks: isFourthYear ? (career_option ? `Awaiting DPC verification of Career Option: ${career_option}` : 'Awaiting DPC / placement verification.') : 'Not applicable for non-final year students.' },
+      { name: 'Central Library', order: 3, status: 'Locked', approved_by: null, remarks: 'Awaiting Central Library clearance review.' },
+      { name: 'Faculty Advisor', order: 4, status: 'Locked', approved_by: null, remarks: 'Awaiting Faculty Advisor review.' },
+      { name: 'Finance', order: 5, status: 'Locked', approved_by: null, remarks: 'Awaiting Finance clearance review.' },
+      { name: 'HOD', order: 6, status: 'Locked', approved_by: null, remarks: 'Awaiting HOD final review.' }
     ];
 
     for (const s of stages) {
-      await query(
+      await conn.query(
         `INSERT INTO nodues_stages (request_id, department_name, stage_order, status, updated_at, approved_by, remarks)
          VALUES (?, ?, ?, ?, NOW(), ?, ?)`,
-        [newReq.lastID, s.name, s.order, s.status, s.approved_by, s.remarks]
+        [requestId, s.name, s.order, s.status, s.approved_by, s.remarks]
       );
     }
 
-    // Automatically calculate initial progress
-    await updateRequestProgress(newReq.lastID);
-
-    // Log initial submission in Audit Trail
-    await logAuditEntry({
-      requestId: newReq.lastID,
+    // Cryptographic hash-chained audit log
+    await appendNoDuesAuditLog({
+      requestId,
       departmentName: 'Student Submission',
       actionType: 'Submission',
       actorName: student.full_name,
       actorRole: 'student',
-      statusAfter: 'Pending Library Verification',
+      statusAfter: 'Pending Department Library',
       remarks: remarks || 'No-Dues clearance application submitted by student.'
-    });
+    }, conn);
 
-    // Notify Student
-    await query(
+    // Notifications
+    await conn.query(
       `INSERT INTO notifications (target_user, title, message, type)
        VALUES (?, ?, ?, ?)`,
-      [regNo, 'No-Dues Request Submitted', `Your No-Dues request ${reqNum} was submitted successfully and sent for parallel Library Verification (Central Library & Dept Library).`, 'success']
+      [regNo, 'No-Dues Request Submitted', `Your No-Dues request ${reqNum} was submitted successfully and sent for Department Library clearance.`, 'success']
     );
 
-    // Notify Central Library & Dept Library
-    await query(
+    await conn.query(
       `INSERT INTO notifications (target_user, title, message, type)
-       VALUES ('main_library_staff', ?, ?, 'info'), ('library_staff', ?, ?, 'info')`,
+       VALUES ('library_staff', ?, ?, 'info')`,
       [
-        'New No-Dues Clearance Request', `Student ${student.full_name} (${regNo}) has submitted a new No-Dues request ${reqNum}.`,
         'New No-Dues Clearance Request', `Student ${student.full_name} (${regNo}) has submitted a new No-Dues request ${reqNum}.`
       ]
     );
+
+    await conn.commit();
 
     return res.json({
       success: true,
@@ -226,40 +235,50 @@ exports.submitNoDuesRequest = async (req, res) => {
     });
 
   } catch (error) {
+    await conn.rollback();
     console.error('Submit Request Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to submit No-Dues request.' });
+  } finally {
+    conn.release();
   }
 };
 
 // Cancel No-Dues Request (before final processing)
 exports.cancelNoDuesRequest = async (req, res) => {
+  const pool = getPool();
+  const conn = await pool.getConnection();
+  await conn.beginTransaction();
+
   try {
     const regNo = req.user.username;
     const { requestId } = req.body;
 
-    const request = await getOne(
-      `SELECT * FROM nodues_requests WHERE id = ? AND register_number = ?`,
+    const [requests] = await conn.query(
+      `SELECT * FROM nodues_requests WHERE id = ? AND register_number = ? FOR UPDATE`,
       [requestId, regNo]
     );
 
-    if (!request) {
+    if (!requests || requests.length === 0) {
+      await conn.rollback();
       return res.status(404).json({ success: false, message: 'Request record not found.' });
     }
 
+    const request = requests[0];
+
     if (request.overall_status === 'Approved') {
+      await conn.rollback();
       return res.status(400).json({ success: false, message: 'Approved requests cannot be cancelled.' });
     }
 
     // Soft cancellation: update status to Cancelled and retain audit logs and stage history
-    await query(
+    await conn.query(
       `UPDATE nodues_requests 
        SET overall_status = 'Cancelled', current_stage = 'Cancelled by Student' 
        WHERE id = ?`,
       [requestId]
     );
 
-    const { logAuditEntry } = require('../utils/workflowHelper');
-    await logAuditEntry({
+    await appendNoDuesAuditLog({
       requestId,
       departmentName: 'Student Cancellation',
       actionType: 'Cancellation',
@@ -267,12 +286,17 @@ exports.cancelNoDuesRequest = async (req, res) => {
       actorRole: 'student',
       statusAfter: 'Cancelled',
       remarks: 'Application cancelled by student. Audit trail preserved.'
-    });
+    }, conn);
+
+    await conn.commit();
 
     return res.json({ success: true, message: 'No-Dues request has been cancelled successfully.' });
   } catch (error) {
+    await conn.rollback();
     console.error('Cancel Request Error:', error);
     return res.status(500).json({ success: false, message: 'Error cancelling request.' });
+  } finally {
+    conn.release();
   }
 };
 
@@ -509,37 +533,17 @@ exports.resubmitNoDuesRequest = async (req, res) => {
 
     const deptName = rejectedStage.department_name;
 
-    // Reset rejected stage to Pending
-    await query(
-      `UPDATE nodues_stages 
-       SET status = 'Pending', approved_by = NULL, remarks = ?, updated_at = NOW()
-       WHERE id = ?`,
-      [`Re-submitted by student: ${comment.trim()}`, rejectedStage.id]
-    );
-
-    // Update request state & increment resubmission count
-    await query(
-      `UPDATE nodues_requests 
-       SET overall_status = 'In Progress', resubmission_count = COALESCE(resubmission_count, 0) + 1 
-       WHERE id = ?`,
-      [requestId]
-    );
-
-    // Recalculate progress & current stage
-    await updateRequestProgress(requestId);
-
-    // Log Audit Entry
-    await logAuditEntry({
+    const transitionResult = await executeStageTransition({
       requestId,
       departmentName: deptName,
-      actionType: 'Re-submission',
-      actorName: request.student_name,
-      actorRole: 'student',
-      statusAfter: `Pending (${deptName})`,
-      remarks: `Re-submitted directly to ${deptName}.`,
-      studentComment: comment.trim(),
-      attachmentUrl: attachmentUrl || null
+      action: 'Resubmit',
+      remarks: `Re-submitted by student: ${comment.trim()}`,
+      actorUser: { username: regNo, full_name: request.student_name, role: 'student' }
     });
+
+    if (!transitionResult.success) {
+      return res.status(transitionResult.statusCode || 400).json({ success: false, message: transitionResult.message });
+    }
 
     // Send notification ONLY to the rejecting department
     const roleTargetMap = {

@@ -1,4 +1,5 @@
-const { query } = require('../config/db');
+const { appendSystemAuditLog } = require('./auditChain');
+const { broadcastSSE } = require('./sse');
 
 function safeDecode(val) {
   if (!val || typeof val !== 'string') return '';
@@ -13,10 +14,8 @@ function safeDecode(val) {
  * Extracts and formats device name and device type from User-Agent and client headers
  */
 function parseDeviceDetails(req) {
-  // If client provided explicit headers or body
   const clientDeviceType = req.headers['x-device-type'] || req.body?.deviceType;
   const clientDeviceName = safeDecode(req.headers['x-device-name']) || req.body?.deviceName;
-
   const userAgent = req.headers['user-agent'] || '';
 
   let deviceType = clientDeviceType || 'Desktop';
@@ -25,7 +24,7 @@ function parseDeviceDetails(req) {
 
   // Detect OS
   if (/windows/i.test(userAgent)) {
-    osName = 'Windows 11/10';
+    osName = 'Windows';
   } else if (/iphone/i.test(userAgent)) {
     osName = 'iOS (iPhone)';
     deviceType = 'Mobile';
@@ -64,49 +63,41 @@ function parseDeviceDetails(req) {
   };
 }
 
-let cachedServerGeo = null;
-let lastGeoFetch = 0;
-
 /**
- * Resolves location from client headers, body, or real IP lookup
+ * Resolves location without third-party external network leaking (DPDP Act 2023)
+ * If client provides GPS coordinates, they are sanitized to ~2 decimals (~1.1km coarse accuracy)
  */
-async function parseLocation(req) {
+function parseLocation(req) {
   const clientLocation = safeDecode(req.headers['x-client-location']) || req.body?.location;
   if (clientLocation && typeof clientLocation === 'string' && clientLocation.trim() && !clientLocation.includes('Detecting')) {
-    return clientLocation.trim();
+    let cleanLoc = clientLocation.trim();
+    // Coarsen any raw floating point coordinates to 2 decimal places to protect exact residential location
+    cleanLoc = cleanLoc.replace(/(-?\d+\.\d{3,})/g, (match) => {
+      const num = parseFloat(match);
+      return isNaN(num) ? match : num.toFixed(2);
+    });
+    return cleanLoc;
   }
 
-  // Check cached server public IP geolocation
-  if (cachedServerGeo && Date.now() - lastGeoFetch < 3600000) {
-    return cachedServerGeo;
+  // Offline default based on local IP or institution subnet
+  const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '127.0.0.1';
+  if (ip === '127.0.0.1' || ip === '::1' || ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.16.')) {
+    return 'SVCE Campus Intranet / Localhost';
   }
 
-  try {
-    const res = await fetch('https://ipwho.is/');
-    if (res.ok) {
-      const d = await res.json();
-      if (d.success !== false && d.city) {
-        cachedServerGeo = `${d.city}, ${d.region}, ${d.country} (${d.latitude?.toFixed(4)}° N, ${d.longitude?.toFixed(4)}° E)`;
-        lastGeoFetch = Date.now();
-        return cachedServerGeo;
-      }
-    }
-  } catch (err) {
-    // fallback
-  }
-
-  return 'Chennai, Tamil Nadu, India';
+  return 'Authorized Institutional Network';
 }
 
 /**
- * Logs a system audit event with device name, device type, and location
+ * Logs a system audit event with hash chaining, device name, device type, and location
  */
 async function logAuditEvent({
   req,
   user = null,
   action,
   details = '',
-  module = 'General'
+  module = 'General',
+  connection = null
 }) {
   try {
     const actorUser = user || req?.user || {
@@ -117,7 +108,7 @@ async function logAuditEvent({
     };
 
     const { deviceName, deviceType } = req ? parseDeviceDetails(req) : { deviceName: 'Server Engine', deviceType: 'Server' };
-    const location = req ? (await parseLocation(req)) : 'Server System Engine';
+    const location = req ? parseLocation(req) : 'Server System Engine';
     const ipAddress = req ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '127.0.0.1') : '127.0.0.1';
 
     const userId = actorUser.id || actorUser.user_id || null;
@@ -125,33 +116,27 @@ async function logAuditEvent({
     const fullName = actorUser.full_name || actorUser.name || username;
     const role = actorUser.role || 'user';
 
-    const sql = `
-      INSERT INTO system_audit_logs 
-      (user_id, username, full_name, role, action, details, module, device_name, device_type, location, ip_address, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-    `;
-
-    await query(sql, [
+    const result = await appendSystemAuditLog({
       userId,
       username,
       fullName,
       role,
       action,
       details,
-      module,
+      moduleName: module,
       deviceName,
       deviceType,
       location,
       ipAddress
-    ]);
+    }, connection);
 
     // Optional SSE broadcast for real-time audit log updates
     try {
-      const { broadcastSSE } = require('./sse');
-      if (broadcastSSE) {
+      if (typeof broadcastSSE === 'function') {
         broadcastSSE({
           type: 'audit_log_event',
           log: {
+            id: result.id,
             username,
             full_name: fullName,
             role,
@@ -161,7 +146,8 @@ async function logAuditEvent({
             device_name: deviceName,
             device_type: deviceType,
             location,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            entry_hash: result.entryHash
           }
         });
       }
@@ -169,6 +155,7 @@ async function logAuditEvent({
       // Ignore SSE broadcast error
     }
 
+    return result;
   } catch (err) {
     console.error('Error logging audit event:', err.message);
   }

@@ -55,7 +55,22 @@ exports.login = async (req, res) => {
       });
     }
 
-    // 2. Validate Password
+    // 2. Check if Account is Deactivated
+    if (user.is_active === 0) {
+      await logAuditEvent({
+        req,
+        user,
+        action: 'LOGIN_DEACTIVATED_ATTEMPT',
+        details: `Login attempted on deactivated account (${cleanUsername}).`,
+        module: 'Authentication'
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'Account is deactivated. Please contact your system administrator.'
+      });
+    }
+
+    // 3. Validate Password
     const validPassword = await bcrypt.compare(password, user.password);
 
     if (!validPassword) {
@@ -118,34 +133,17 @@ exports.login = async (req, res) => {
       profileData = await getOne('SELECT * FROM finance_profile WHERE user_id = ?', [user.id]);
     } else if (user.role === 'main_library_staff') {
       profileData = await getOne('SELECT * FROM main_library_profile WHERE user_id = ?', [user.id]);
+    } else if (user.role === 'admin') {
+      profileData = {
+        employee_id: user.username,
+        full_name: 'System Administrator',
+        email: user.email,
+        department: 'Institutional Administration',
+        designation: 'System Administrator'
+      };
     }
 
-    // 4. TOTP Multi-Factor Authentication Check (Mandatory for HOD and Finance)
-    const requiresMFA = ['hod', 'finance'].includes(user.role);
-
-    if (requiresMFA) {
-      const mfaPendingToken = jwt.sign(
-        { userId: user.id, username: user.username, role: user.role, mfaPending: true },
-        JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-
-      if (!user.mfa_enabled) {
-        return res.json({
-          success: true,
-          mfaSetupRequired: true,
-          mfaPendingToken,
-          message: 'MFA enrollment required for administrative access.'
-        });
-      }
-
-      return res.json({
-        success: true,
-        mfaRequired: true,
-        mfaPendingToken,
-        message: 'Enter 6-digit TOTP authentication code to complete login.'
-      });
-    }
+    // 4. Multi-Factor Authentication: Disabled per institutional policy (single direct login)
 
     // 5. Issue Standard 1-Hour Access Token
     const mustChangePassword = Boolean(user.must_change_password);
@@ -248,6 +246,15 @@ exports.verifyMFA = async (req, res) => {
     let profileData = null;
     if (user.role === 'hod') profileData = await getOne('SELECT * FROM hod_profile WHERE user_id = ?', [user.id]);
     else if (user.role === 'finance') profileData = await getOne('SELECT * FROM finance_profile WHERE user_id = ?', [user.id]);
+    else if (user.role === 'admin') {
+      profileData = {
+        employee_id: user.username,
+        full_name: 'System Administrator',
+        email: user.email,
+        department: 'Institutional Administration',
+        designation: 'System Administrator'
+      };
+    }
 
     const mustChangePassword = Boolean(user.must_change_password);
     const token = jwt.sign(

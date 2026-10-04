@@ -104,7 +104,9 @@ export class ErrorBoundary extends React.Component {
 
               {this.state.showDetails && (
                 <pre className="p-3 bg-slate-900 text-slate-200 rounded-xl text-[10px] font-mono overflow-x-auto max-h-48 whitespace-pre-wrap">
-                  {this.state.error?.stack || 'No stack trace available.'}
+                  {import.meta.env.PROD 
+                    ? 'Technical diagnostics and stack traces are suppressed in production mode. Please contact SVCE IT Helpdesk.' 
+                    : (this.state.error?.stack || 'No stack trace available.')}
                 </pre>
               )}
             </div>

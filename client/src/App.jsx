@@ -14,12 +14,17 @@ import HODDashboard from './pages/HODDashboard';
 import DPCDashboard from './pages/DPCDashboard';
 import FinanceDashboard from './pages/FinanceDashboard';
 import MainLibraryDashboard from './pages/MainLibraryDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 
 const MainAppContent = () => {
   const { user, isAuthenticated } = useAuth();
 
   if (!isAuthenticated || !user) {
     return <LoginPage />;
+  }
+
+  if (user.role === 'admin') {
+    return <AdminDashboard />;
   }
 
   if (user.role === 'student') {
@@ -54,6 +59,7 @@ const MainAppContent = () => {
 };
 
 import PublicVerifyCertificate from './pages/PublicVerifyCertificate';
+import PrivacyNoticePage from './pages/PrivacyNoticePage';
 
 export function App() {
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
@@ -62,6 +68,14 @@ export function App() {
     return (
       <ErrorBoundary>
         <PublicVerifyCertificate token={token} />
+      </ErrorBoundary>
+    );
+  }
+
+  if (pathname === '/privacy' || pathname === '/privacy-policy') {
+    return (
+      <ErrorBoundary>
+        <PrivacyNoticePage />
       </ErrorBoundary>
     );
   }

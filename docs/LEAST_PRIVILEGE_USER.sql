@@ -16,8 +16,16 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON `svce_nodues`.* TO 'svce_app'@'localhost
 REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'svce_app'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE ON `svce_nodues`.* TO 'svce_app'@'localhost';
 
--- 4. Apply privilege changes
+-- 4. Append-Only Audit Log Tables (DPDP Act & Tamper Protection)
+-- Disallow UPDATE and DELETE on audit log tables to guarantee append-only immutability
+REVOKE UPDATE, DELETE ON `svce_nodues`.`nodues_audit_logs` FROM 'svce_app'@'localhost';
+REVOKE UPDATE, DELETE ON `svce_nodues`.`system_audit_logs` FROM 'svce_app'@'localhost';
+GRANT SELECT, INSERT ON `svce_nodues`.`nodues_audit_logs` TO 'svce_app'@'localhost';
+GRANT SELECT, INSERT ON `svce_nodues`.`system_audit_logs` TO 'svce_app'@'localhost';
+
+-- 5. Apply privilege changes
 FLUSH PRIVILEGES;
 
--- 5. Verification: Check granted privileges
+-- 6. Verification: Check granted privileges
 SHOW GRANTS FOR 'svce_app'@'localhost';
+

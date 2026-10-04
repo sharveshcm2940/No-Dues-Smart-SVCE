@@ -19,7 +19,6 @@ import {
   CheckCircle2, 
   HelpCircle, 
   ArrowRight,
-  Smartphone,
   Check
 } from 'lucide-react';
 import Modal from '../components/common/Modal';
@@ -28,21 +27,16 @@ import InstallAppButton from '../components/common/InstallAppButton';
 const isDev = import.meta.env.DEV;
 
 export const LoginPage = () => {
-  const { login, verifyMfa, loading, authError, user, updateUserData } = useAuth();
+  const { login, loading, authError, user, updateUserData } = useAuth();
   
-  const [username, setUsername] = useState(isDev ? 'IT2024001' : '');
-  const [password, setPassword] = useState(isDev ? 'password123' : '');
+  const [username, setUsername] = useState(isDev ? 'admin' : '');
+  const [password, setPassword] = useState(isDev ? 'Svce@2026!' : '');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [formError, setFormError] = useState('');
   const [mobileTab, setMobileTab] = useState('login');
   const [lastSelectedPreset, setLastSelectedPreset] = useState('');
-
-  // MFA Challenge State
-  const [mfaChallenge, setMfaChallenge] = useState(null); // { mfa_token, username, user_id }
-  const [totpCode, setTotpCode] = useState('');
-  const [mfaLoading, setMfaLoading] = useState(false);
 
   // Forced Password Change State
   const [mustChangePasswordModal, setMustChangePasswordModal] = useState(false);
@@ -74,7 +68,7 @@ export const LoginPage = () => {
 
   const handlePresetSelect = (presetUser, presetTitle) => {
     setUsername(presetUser);
-    setPassword('password123');
+    setPassword('Svce@2026!');
     setFormError('');
     setLastSelectedPreset(presetTitle || presetUser);
     setMobileTab('login');
@@ -89,35 +83,6 @@ export const LoginPage = () => {
 
     setFormError('');
     const res = await login(username.trim(), password);
-    if (!res.success) {
-      if (res.mfa_required) {
-        setMfaChallenge({
-          mfa_token: res.mfa_token,
-          username: res.username,
-          user_id: res.user_id
-        });
-        setFormError('');
-        return;
-      }
-      setFormError(res.message);
-    } else {
-      if (res.user?.must_change_password) {
-        setMustChangePasswordModal(true);
-      }
-    }
-  };
-
-  const handleMfaSubmit = async (e) => {
-    e.preventDefault();
-    if (!totpCode || totpCode.trim().length !== 6) {
-      setFormError('Please enter a valid 6-digit TOTP verification code.');
-      return;
-    }
-
-    setMfaLoading(true);
-    setFormError('');
-    const res = await verifyMfa(mfaChallenge.mfa_token, totpCode.trim());
-    setMfaLoading(false);
     if (!res.success) {
       setFormError(res.message);
     } else {
@@ -193,6 +158,7 @@ export const LoginPage = () => {
   };
 
   const quickPresets = [
+    { title: 'System Administrator', subtitle: 'Institutional Superuser (Admin)', id: 'admin', role: 'Admin', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-900 border-indigo-200 hover:bg-indigo-100' },
     { title: 'Dr V Vidhya', subtitle: 'Head of Department (HOD)', id: 'EMP-HOD-IT-01', role: 'HOD', icon: Crown, color: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100' },
     { title: 'Dr. R. Placement Coordinator', subtitle: 'Placement Coordinator (DPC)', id: 'EMP-DPC-IT-01', role: 'DPC', icon: Building2, color: 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100' },
     { title: 'Gurusamy M', subtitle: 'Finance Clearance Officer', id: 'EMP-FIN-IT-01', role: 'Finance', icon: ShieldCheck, color: 'bg-pink-50 text-pink-800 border-pink-200 hover:bg-pink-100' },
@@ -288,94 +254,47 @@ export const LoginPage = () => {
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-5 bg-svceOrange rounded-full"></span>
                   <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                    {mfaChallenge ? 'Two-Factor Authentication' : 'Sign In to SVCE ERP'}
+                    Sign In to SVCE ERP
                   </h3>
                 </div>
                 <span className="text-[10px] sm:text-[11px] font-bold text-brand-700 bg-brand-50 border border-brand-200 px-2.5 py-0.5 rounded-full">
-                  {mfaChallenge ? 'TOTP MFA' : 'Single Login'}
+                  Single Login
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed pl-3.5">
-                {mfaChallenge 
-                  ? 'Mandatory security policy: enter the 6-digit authenticator code to complete login.'
-                  : 'Enter your credentials below. The system will automatically route you to your assigned dashboard.'
-                }
+                Enter your credentials below. The system will automatically route you to your assigned dashboard.
               </p>
             </div>
 
             {/* Error Alert Box */}
             {(formError || authError) && (
-              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2.5 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+              <div role="alert" aria-live="polite" className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2.5 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <span className="font-semibold">{formError || authError}</span>
               </div>
             )}
 
-            {/* If MFA Challenge is active, show TOTP verification form */}
-            {mfaChallenge ? (
-              <form className="space-y-4" onSubmit={handleMfaSubmit}>
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3">
-                  <Smartphone className="w-6 h-6 text-brand-600 flex-shrink-0" />
-                  <div className="text-xs text-blue-900">
-                    <p className="font-bold">Authenticator Code Required</p>
-                    <p className="text-[11px] text-blue-700 mt-0.5">
-                      Account <strong>{mfaChallenge.username}</strong> requires 2FA. Open Google Authenticator or your TOTP app.
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    6-Digit Security Code *
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={6}
-                    value={totpCode}
-                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                    placeholder="123456"
-                    className="w-full text-center tracking-widest text-lg font-mono py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 transition-all"
-                    autoFocus
-                    required
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { setMfaChallenge(null); setTotpCode(''); }}
-                    className="flex-1 py-2.5 px-4 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all"
-                  >
-                    Back to Login
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={mfaLoading || totpCode.length !== 6}
-                    className="flex-2 flex justify-center items-center gap-2 py-2.5 px-4 rounded-xl shadow-md shadow-blue-600/20 text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 focus:outline-none transition-all disabled:opacity-60"
-                  >
-                    <ShieldCheck className="w-4 h-4 text-svceOrange" />
-                    <span>{mfaLoading ? 'Verifying...' : 'Verify & Continue'}</span>
-                  </button>
-                </div>
-              </form>
-            ) : (
-              /* Standard Credentials Form */
-              <form className="space-y-4" onSubmit={handleSubmit}>
+            {/* Standard Credentials Form */}
+            <form className="space-y-4" onSubmit={handleSubmit} aria-label="SVCE ERP Login Form">
                 
                 {/* Register Number / Employee ID */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Register Number / Employee ID *
+                  <label htmlFor="login-username" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Register Number / Employee ID <span className="text-red-500" aria-hidden="true">*</span>
                   </label>
                   <div className="relative">
-                    <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                     <input
+                      id="login-username"
+                      name="username"
+                      autoComplete="username"
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="e.g. IT2024001 or EMP-HOD-IT-01"
                       className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 transition-all"
                       required
+                      aria-required="true"
                     />
                   </div>
                 </div>
@@ -383,8 +302,8 @@ export const LoginPage = () => {
                 {/* Password */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-slate-700">
-                      Password *
+                    <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700">
+                      Password <span className="text-red-500" aria-hidden="true">*</span>
                     </label>
                     <button
                       type="button"
@@ -401,21 +320,26 @@ export const LoginPage = () => {
                   </div>
 
                   <div className="relative">
-                    <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                     <input
+                      id="login-password"
+                      name="password"
+                      autoComplete="current-password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••••••"
                       className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 transition-all"
                       required
+                      aria-required="true"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showPassword ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
                     </button>
                   </div>
                 </div>
@@ -425,6 +349,8 @@ export const LoginPage = () => {
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
                       type="checkbox"
+                      id="login-remember-me"
+                      name="rememberMe"
                       checked={rememberMe}
                       onChange={(e) => setRememberMe(e.target.checked)}
                       className="rounded text-brand-600 focus:ring-brand-600 h-4 w-4"
@@ -433,7 +359,7 @@ export const LoginPage = () => {
                   </label>
 
                   <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
                     SVCE Hardened Auth
                   </span>
                 </div>
@@ -454,7 +380,6 @@ export const LoginPage = () => {
                 </div>
 
               </form>
-            )}
 
           </div>
 
@@ -658,6 +583,12 @@ export const LoginPage = () => {
           </form>
         </div>
       </Modal>
+
+      <footer className="text-center py-4 text-xs text-slate-500">
+        <a href="/privacy" className="hover:text-blue-600 underline font-medium">
+          🔒 DPDP Act 2023 Privacy Notice & Consent Preferences
+        </a>
+      </footer>
 
     </div>
   );

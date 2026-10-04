@@ -12,17 +12,31 @@ const mainLibraryController = require('../controllers/mainLibraryController');
 const auditLogController = require('../controllers/auditLogController');
 const certificateController = require('../controllers/certificateController');
 const fileController = require('../controllers/fileController');
+const consentController = require('../controllers/consentController');
+const adminController = require('../controllers/adminController');
+const bulkImportController = require('../controllers/bulkImportController');
+const reopenController = require('../controllers/reopenController');
+const finePaymentController = require('../controllers/finePaymentController');
+const complaintController = require('../controllers/complaintController');
 
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
-const { uploadDocument, uploadPhoto } = require('../utils/fileUpload');
+const { requireRequestOwnership, requireStudentOrAdvisee } = require('../middleware/authorizeResource');
+const { uploadDocument, uploadPhoto, uploadCsv } = require('../utils/fileUpload');
 const { handleSSEConnection } = require('../utils/sse');
 
 // Server-Sent Events (SSE) Real-Time Stream Endpoint
 router.get('/sse', handleSSEConnection);
 
-// System Audit Logs (Available across all 7 dashboards with device name, device type, location)
+// System & Cryptographic Audit Logs
 router.get('/audit-logs', authenticateToken, auditLogController.getAuditLogs);
 router.post('/audit-logs', authenticateToken, auditLogController.recordClientAction);
+router.get('/audit-logs/verify', authenticateToken, auditLogController.verifyAuditLogs);
+router.get('/admin/audit-logs/verify', authenticateToken, auditLogController.verifyAuditLogs);
+router.post('/admin/audit-logs/purge', authenticateToken, authorizeRole(['hod', 'admin']), consentController.purgeExpiredLogs);
+
+// DPDP Act 2023 Consent Management
+router.get('/consent', authenticateToken, consentController.getUserConsents);
+router.post('/consent', authenticateToken, consentController.recordConsent);
 
 // Authentication Routes
 router.post('/auth/login', authController.login);
@@ -80,6 +94,7 @@ router.post(
   '/student/cancel-nodues',
   authenticateToken,
   authorizeRole(['student']),
+  requireRequestOwnership(),
   studentController.cancelNoDuesRequest
 );
 
@@ -87,12 +102,14 @@ router.post(
   '/student/resubmit-nodues',
   authenticateToken,
   authorizeRole(['student']),
+  requireRequestOwnership(),
   studentController.resubmitNoDuesRequest
 );
 
 router.get(
   '/student/audit-logs/:requestId',
   authenticateToken,
+  requireRequestOwnership(),
   studentController.getAuditLogs
 );
 
@@ -138,6 +155,7 @@ router.post(
   '/library/process-nodues',
   authenticateToken,
   authorizeRole(['library_staff']),
+  requireRequestOwnership(),
   libraryController.processNoDuesAction
 );
 
@@ -194,6 +212,7 @@ router.get(
   '/library/students/:regNo',
   authenticateToken,
   authorizeRole(['library_staff', 'faculty_advisor', 'hod']),
+  requireStudentOrAdvisee('regNo'),
   libraryController.getStudentDetail
 );
 
@@ -251,6 +270,7 @@ router.post(
   '/fa/process-nodues',
   authenticateToken,
   authorizeRole(['faculty_advisor']),
+  requireRequestOwnership(),
   faController.processFAAction
 );
 
@@ -279,6 +299,7 @@ router.get(
   '/fa/students/:regNo/detail',
   authenticateToken,
   authorizeRole(['faculty_advisor']),
+  requireStudentOrAdvisee('regNo'),
   faController.getStudentHallTicketDetail
 );
 
@@ -294,6 +315,7 @@ router.post(
   '/hod/process-nodues',
   authenticateToken,
   authorizeRole(['hod']),
+  requireRequestOwnership(),
   hodController.processHODAction
 );
 
@@ -351,6 +373,7 @@ router.post(
   '/dpc/process-nodues',
   authenticateToken,
   authorizeRole(['dpc']),
+  requireRequestOwnership(),
   dpcController.processDPCAction
 );
 
@@ -373,6 +396,7 @@ router.post(
   '/finance/process-nodues',
   authenticateToken,
   authorizeRole(['finance']),
+  requireRequestOwnership(),
   financeController.processFinanceAction
 );
 
@@ -395,6 +419,7 @@ router.post(
   '/main-library/process-nodues',
   authenticateToken,
   authorizeRole(['main_library_staff']),
+  requireRequestOwnership(),
   mainLibraryController.processMainLibraryAction
 );
 
@@ -403,6 +428,86 @@ router.post(
   authenticateToken,
   authorizeRole(['main_library_staff']),
   mainLibraryController.bulkApproveMainLibrary
+);
+
+// ==========================================
+// Phase 3 Endpoints: Admin, Bulk Import, Stage Reopening, Fines & Complaints
+// ==========================================
+
+// 1. Admin Role & User Management Routes
+router.get('/admin/users', authenticateToken, authorizeRole(['admin']), adminController.getUsers);
+router.post('/admin/users', authenticateToken, authorizeRole(['admin']), adminController.createUser);
+router.put('/admin/users/:id', authenticateToken, authorizeRole(['admin']), adminController.updateUser);
+router.post('/admin/users/:id/toggle-status', authenticateToken, authorizeRole(['admin']), adminController.toggleUserStatus);
+router.post('/admin/users/:id/force-password-reset', authenticateToken, authorizeRole(['admin']), adminController.forcePasswordReset);
+router.post('/admin/users/:id/unlock', authenticateToken, authorizeRole(['admin']), adminController.unlockUser);
+router.get('/admin/settings', authenticateToken, authorizeRole(['admin']), adminController.getSettings);
+router.put('/admin/settings', authenticateToken, authorizeRole(['admin']), adminController.updateSettings);
+
+// 2. Bulk Import Routes
+router.post(
+  '/admin/bulk-import/students',
+  authenticateToken,
+  authorizeRole(['admin']),
+  uploadCsv.single('file'),
+  bulkImportController.importStudents
+);
+router.post(
+  '/admin/bulk-import/staff',
+  authenticateToken,
+  authorizeRole(['admin']),
+  uploadCsv.single('file'),
+  bulkImportController.importStaff
+);
+router.post(
+  '/admin/bulk-import/borrow-records',
+  authenticateToken,
+  authorizeRole(['admin']),
+  uploadCsv.single('file'),
+  bulkImportController.importBorrowRecords
+);
+router.get(
+  '/admin/bulk-import/template/:type',
+  authenticateToken,
+  authorizeRole(['admin']),
+  bulkImportController.downloadTemplate
+);
+
+// 3. Stage Reopening Route
+router.post(
+  '/nodues/reopen-stage',
+  authenticateToken,
+  authorizeRole(['library_staff', 'dpc', 'main_library_staff', 'faculty_advisor', 'finance', 'hod', 'admin']),
+  reopenController.reopenStageAction
+);
+
+// 4. Configurable Fines & Payment Gateway Routes
+router.get('/fines/rules', authenticateToken, finePaymentController.getFineRules);
+router.post('/fines/calculate', authenticateToken, finePaymentController.calculateFine);
+router.post(
+  '/fines/mark-paid',
+  authenticateToken,
+  authorizeRole(['library_staff', 'finance', 'admin']),
+  finePaymentController.markFinePaid
+);
+router.post('/fines/initiate-payment', authenticateToken, finePaymentController.initiateOnlinePayment);
+router.post('/fines/verify-payment', authenticateToken, finePaymentController.verifyOnlinePayment);
+
+// 5. Unified Complaint Desk Routes
+router.get('/complaints', authenticateToken, complaintController.getComplaints);
+router.get('/complaints/:id', authenticateToken, complaintController.getComplaintDetails);
+router.post('/complaints', authenticateToken, complaintController.createComplaint);
+router.put(
+  '/complaints/:id/assign',
+  authenticateToken,
+  authorizeRole(['library_staff', 'dpc', 'main_library_staff', 'faculty_advisor', 'finance', 'hod', 'admin']),
+  complaintController.assignComplaint
+);
+router.put(
+  '/complaints/:id/status',
+  authenticateToken,
+  authorizeRole(['library_staff', 'dpc', 'main_library_staff', 'faculty_advisor', 'finance', 'hod', 'admin']),
+  complaintController.updateComplaintStatus
 );
 
 module.exports = router;

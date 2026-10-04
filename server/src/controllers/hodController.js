@@ -1,6 +1,8 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry, executeStageTransition } = require('../utils/workflowHelper');
+const { sanitizeStudentProfile, sanitizeRequest } = require('../utils/dataMasking');
+const { getOfficerDepartment } = require('../middleware/authorizeResource');
 
 // Get HOD Executive Overview Dashboard Statistics
 exports.getHODDashboard = async (req, res) => {
@@ -9,11 +11,20 @@ exports.getHODDashboard = async (req, res) => {
 
     // HOD Profile
     const hod = await getOne('SELECT * FROM hod_profile WHERE employee_id = ?', [empId]);
+    const officerDept = await getOfficerDepartment(req.user);
+
+    let deptClause = '';
+    const params = [];
+    if (officerDept) {
+      deptClause = 'WHERE department = ?';
+      params.push(officerDept);
+    }
 
     // Master Stats
-    const totalStudents = await getOne('SELECT COUNT(*) as count FROM students');
-    const clearedStudents = await getOne(`SELECT COUNT(*) as count FROM nodues_requests WHERE overall_status = 'Approved'`);
-    const pendingHODApprovals = await query(`
+    const totalStudents = await getOne(`SELECT COUNT(*) as count FROM students ${deptClause}`, params);
+    const clearedStudents = await getOne(`SELECT COUNT(*) as count FROM nodues_requests WHERE overall_status = 'Approved' ${officerDept ? 'AND department = ?' : ''}`, params);
+    
+    const pendingHODApprovalsRaw = await query(`
       SELECT 
         nr.id as request_id,
         nr.request_number,
@@ -28,7 +39,7 @@ exports.getHODDashboard = async (req, res) => {
         ns.remarks as hod_stage_remarks
       FROM nodues_requests nr
       JOIN nodues_stages ns ON nr.id = ns.request_id AND ns.department_name = 'HOD'
-      WHERE ns.status = 'Pending'
+      WHERE ns.status = 'Pending' ${officerDept ? 'AND nr.department = ?' : ''}
       ORDER BY 
         CASE nr.year 
           WHEN 'IV Year' THEN 4 
@@ -38,9 +49,9 @@ exports.getHODDashboard = async (req, res) => {
           ELSE 0 
         END DESC, 
         nr.student_name ASC
-    `);
+    `, params);
 
-    const allDepartmentRequests = await query(`
+    const allDepartmentRequestsRaw = await query(`
       SELECT nr.*, 
         (SELECT COUNT(*) FROM borrow_records br WHERE br.register_number = nr.register_number AND br.status = 'Issued') as active_books,
         (SELECT COALESCE(SUM(fine_amount), 0) FROM borrow_records br WHERE br.register_number = nr.register_number AND br.fine_status = 'Unpaid') as fine_unpaid
@@ -49,7 +60,7 @@ exports.getHODDashboard = async (req, res) => {
         SELECT status 
         FROM nodues_stages fin_s 
         WHERE fin_s.request_id = nr.id AND fin_s.department_name = 'Finance'
-      ) = 'Approved'
+      ) = 'Approved' ${officerDept ? 'AND nr.department = ?' : ''}
       ORDER BY 
         CASE nr.year 
           WHEN 'IV Year' THEN 4 
@@ -59,10 +70,10 @@ exports.getHODDashboard = async (req, res) => {
           ELSE 0 
         END DESC, 
         nr.student_name ASC
-    `);
+    `, params);
 
     // Department Master Student Roster
-    const allStudents = await query(`
+    const allStudentsRaw = await query(`
       SELECT s.*, 
         COALESCE(nr.overall_status, 'Not Submitted') as nodues_status,
         COALESCE(nr.current_stage, 'N/A') as current_stage,
@@ -70,6 +81,7 @@ exports.getHODDashboard = async (req, res) => {
         nr.certificate_number
       FROM students s
       LEFT JOIN nodues_requests nr ON s.register_number = nr.register_number
+      ${officerDept ? 'WHERE s.department = ?' : ''}
       ORDER BY 
         CASE s.year 
           WHEN 'IV Year' THEN 4 
@@ -79,7 +91,11 @@ exports.getHODDashboard = async (req, res) => {
           ELSE 0 
         END DESC, 
         s.full_name ASC
-    `);
+    `, params);
+
+    const pendingHODApprovals = pendingHODApprovalsRaw.map(r => sanitizeRequest(r, req.user.role));
+    const allDepartmentRequests = allDepartmentRequestsRaw.map(r => sanitizeRequest(r, req.user.role));
+    const allStudents = allStudentsRaw.map(s => sanitizeStudentProfile(s, req.user.role));
 
     return res.json({
       success: true,
@@ -113,6 +129,10 @@ exports.processHODAction = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Request ID and Action are required.' });
     }
 
+    if (!['Approve', 'Reject', 'Hold'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Invalid action specified.' });
+    }
+
     const hod = await getOne('SELECT full_name FROM hod_profile WHERE employee_id = ?', [empId]);
     const approverName = hod ? `${hod.full_name} (Head of Department)` : 'Dr V Vidhya (HOD - IT)';
 
@@ -121,99 +141,46 @@ exports.processHODAction = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No-Dues Request record not found.' });
     }
 
+    const officerDept = await getOfficerDepartment(req.user);
+    if (officerDept && request.department && officerDept.toLowerCase() !== request.department.toLowerCase()) {
+      return res.status(403).json({
+        success: false,
+        message: `Access denied: Request belongs to department '${request.department}', but your account is scoped to '${officerDept}'.`
+      });
+    }
+
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
       return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });
     }
 
-    if (action === 'Approve') {
-      const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
-      const faStage = stages.find(s => s.department_name === 'Faculty Advisor');
+    const transitionResult = await executeStageTransition({
+      requestId,
+      departmentName: 'HOD',
+      action,
+      remarks: remarks || (action === 'Approve' ? 'Head of Department final clearance granted.' : 'Put on hold by HOD.'),
+      actorUser: { username: empId, full_name: approverName, role: 'hod' }
+    });
 
-      if (!faStage || faStage.status !== 'Approved') {
-        return res.status(400).json({
-          success: false,
-          message: 'HOD final sign-off is locked until Faculty Advisor clearance is approved.'
-        });
-      }
+    if (!transitionResult.success) {
+      return res.status(transitionResult.statusCode || 400).json({ success: false, message: transitionResult.message });
+    }
 
-      // Update HOD Stage
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = ?, updated_at = NOW()
-         WHERE request_id = ? AND department_name = 'HOD'`,
-        [approverName, remarks || 'Head of Department approval granted.', requestId]
-      );
-
-      // Audit Log Entry
-      await logAuditEntry({
-        requestId,
-        departmentName: 'HOD',
-        actionType: 'Approval',
-        actorName: approverName,
-        actorRole: 'hod',
-        statusAfter: 'Approved',
-        remarks: remarks || 'Head of Department final clearance granted.'
-      });
-
-      const result = await updateRequestProgress(requestId);
-
-      if (result && result.status === 'Approved') {
-        await query(
-          `INSERT INTO notifications (target_user, title, message, type)
-           VALUES (?, ?, ?, ?)`,
-          [request.register_number, 'No-Dues Clearance Completed!', `All sections have approved your request. Your official SVCE Digital Certificate ${result.certificateNumber} is now ready for download!`, 'success']
-        );
-
-        return res.json({
-          success: true,
-          message: `Request ${request.request_number} fully approved. Digital Certificate ${result.certificateNumber} generated!`
-        });
-      }
-
-      return res.json({
-        success: true,
-        message: `Request ${request.request_number} approved by HOD. Certificate will be generated after all remaining sections approve.`
-      });
-
-    } else {
-      const newStatus = action === 'Reject' ? 'Rejected' : 'Hold';
-
-      await query(
-        `UPDATE nodues_stages 
-         SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
-         WHERE request_id = ? AND department_name = 'HOD'`,
-        [newStatus, approverName, remarks, requestId]
-      );
-
-      // Audit Log Entry
-      await logAuditEntry({
-        requestId,
-        departmentName: 'HOD',
-        actionType: action === 'Reject' ? 'Rejection' : 'Hold',
-        actorName: approverName,
-        actorRole: 'hod',
-        statusAfter: newStatus,
-        remarks: remarks || (action === 'Reject' ? 'Rejection by HOD.' : 'Put on hold by HOD.')
-      });
-
-      if (action === 'Reject') {
-        await query(
-          `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'HOD (Rejected)' WHERE id = ?`,
-          [requestId]
-        );
-      }
-
+    if (action === 'Reject' || action === 'Hold') {
+      const isReject = action === 'Reject';
       await notifyStudentAndFA({
         registerNumber: request.register_number,
         requestNumber: request.request_number,
-        title: `No-Dues Request ${action === 'Reject' ? 'REJECTED' : 'Put On Hold'} (HOD Stage)`,
-        studentMsg: `Head of Department ${approverName} ${action === 'Reject' ? 'rejected' : 'placed on hold'} your No-Dues request ${request.request_number}. Remarks: ${remarks || 'Institutional clearance pending'}`,
-        faMsg: `URGENT ADVISEE ALERT: The No-Dues application (${request.request_number}) of your advisee ${request.student_name} (${request.register_number}) was ${action === 'Reject' ? 'REJECTED' : 'PLACED ON HOLD'} by Head of Department. Remarks: ${remarks || 'Institutional clearance pending'}`,
-        type: action === 'Reject' ? 'danger' : 'warning'
+        title: `No-Dues Request ${isReject ? 'REJECTED' : 'Put On Hold'} (HOD Stage)`,
+        studentMsg: `Head of Department ${approverName} ${isReject ? 'rejected' : 'placed on hold'} your No-Dues request ${request.request_number}. Remarks: ${remarks || 'Institutional clearance pending'}`,
+        faMsg: `URGENT ADVISEE ALERT: The No-Dues application (${request.request_number}) of your advisee ${request.student_name} (${request.register_number}) was ${isReject ? 'REJECTED' : 'PLACED ON HOLD'} by Head of Department. Remarks: ${remarks || 'Institutional clearance pending'}`,
+        type: isReject ? 'danger' : 'warning'
       });
-
-      return res.json({ success: true, message: `Request ${request.request_number} marked as ${newStatus} by HOD.` });
     }
+
+    return res.json({
+      success: true,
+      message: `Request ${request.request_number} marked as ${transitionResult.stageStatus} by HOD.`
+    });
 
   } catch (error) {
     console.error('Process HOD Action Error:', error);
@@ -242,15 +209,17 @@ exports.bulkApproveHOD = async (req, res) => {
 
     let count = 0;
     for (const item of pendingStages) {
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk HOD approval granted.', updated_at = NOW() 
-         WHERE request_id = ? AND department_name = 'HOD'`,
-        [approverName, item.request_id]
-      );
+      const transResult = await executeStageTransition({
+        requestId: item.request_id,
+        departmentName: 'HOD',
+        action: 'Approve',
+        remarks: 'Bulk HOD approval granted.',
+        actorUser: { username: empId, full_name: approverName, role: 'hod' }
+      });
 
-      await updateRequestProgress(item.request_id);
-      count++;
+      if (transResult.success) {
+        count++;
+      }
     }
 
     return res.json({

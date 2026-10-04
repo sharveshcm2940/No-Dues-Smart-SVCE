@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "otplib": "^13.5.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "marked": "^18.0.14"
+  }
+}

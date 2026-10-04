@@ -5,6 +5,9 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
+const connectionLimit = parseInt(process.env.DB_CONNECTION_LIMIT || '50', 10);
+const maxIdle = parseInt(process.env.DB_MAX_IDLE || '25', 10);
+
 const config = {
   host: process.env.DB_HOST || process.env.MYSQL_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || '3306', 10),
@@ -12,8 +15,12 @@ const config = {
   password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : '',
   database: process.env.DB_NAME || process.env.MYSQL_DATABASE || 'svce_nodues',
   waitForConnections: true,
-  connectionLimit: 15,
+  connectionLimit,
+  maxIdle,
+  idleTimeout: 60000,
   queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000,
   dateStrings: true,
   multipleStatements: true
 };
@@ -194,9 +201,26 @@ const getOne = async (sql, params = []) => {
   return rows && rows.length > 0 ? rows[0] : null;
 };
 
+const getPoolStats = () => {
+  if (!mysqlPool || !mysqlPool.pool) {
+    return { status: 'uninitialized' };
+  }
+  const pool = mysqlPool.pool;
+  const allConnCount = pool._allConnections ? pool._allConnections.length : 0;
+  const freeConnCount = pool._freeConnections ? pool._freeConnections.length : 0;
+  return {
+    connectionLimit: config.connectionLimit,
+    activeConnections: Math.max(0, allConnCount - freeConnCount),
+    freeConnections: freeConnCount,
+    totalConnections: allConnCount,
+    queuedRequests: pool._connectionQueue ? pool._connectionQueue.length : 0
+  };
+};
+
 module.exports = {
   mysqlPool,
   getPool: () => mysqlPool,
+  getPoolStats,
   ensureReady,
   getEngine: () => 'mysql',
   query,

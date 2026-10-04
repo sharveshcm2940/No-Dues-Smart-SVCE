@@ -100,8 +100,17 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest,json}'],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/health/],
+        navigateFallbackDenylist: [/^\/api/, /^\/health/, /^\/ready/, /^\/uploads/],
         runtimeCaching: [
+          // Explicit NetworkOnly rules: Never cache authenticated API responses or uploaded documents
+          {
+            urlPattern: /.*\/api\/.*/i,
+            handler: 'NetworkOnly'
+          },
+          {
+            urlPattern: /.*\/uploads\/.*/i,
+            handler: 'NetworkOnly'
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
@@ -134,7 +143,7 @@ export default defineConfig({
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
             handler: 'StaleWhileRevalidate',
             options: {
-              cacheName: 'images-cache',
+              cacheName: 'static-assets-cache',
               expiration: {
                 maxEntries: 60,
                 maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
@@ -148,6 +157,9 @@ export default defineConfig({
       }
     })
   ],
+  esbuild: {
+    drop: process.env.NODE_ENV === 'production' || process.env.VITE_PROD === 'true' ? ['console', 'debugger'] : ['console', 'debugger']
+  },
   server: {
     port: 3000,
     host: true,

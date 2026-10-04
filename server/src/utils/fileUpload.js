@@ -123,9 +123,15 @@ async function processProfilePhoto(inputPath, outputPath) {
   }
 }
 
+const uploadCsv = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB size limit
+});
+
 module.exports = {
   uploadDocument,
   uploadPhoto,
+  uploadCsv,
   validateAndScanUploadedFile,
   processProfilePhoto,
   DOCUMENTS_DIR,

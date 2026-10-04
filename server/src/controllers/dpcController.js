@@ -1,6 +1,8 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry, executeStageTransition } = require('../utils/workflowHelper');
+const { sanitizeRequest } = require('../utils/dataMasking');
+const { getOfficerDepartment } = require('../middleware/authorizeResource');
 
 // Get DPC Dashboard Statistics & Submissions
 exports.getDPCDashboard = async (req, res) => {
@@ -9,13 +11,21 @@ exports.getDPCDashboard = async (req, res) => {
 
     // DPC Profile
     const dpc = await getOne('SELECT * FROM dpc_profile WHERE employee_id = ?', [empId]);
+    const officerDept = await getOfficerDepartment(req.user);
+
+    let deptClause = '';
+    const params = [];
+    if (officerDept) {
+      deptClause = 'AND s.department = ?';
+      params.push(officerDept);
+    }
 
     // All Career Submissions
-    const careerSubmissions = await query(
+    const careerSubmissionsRaw = await query(
       `SELECT nr.*, s.section, s.batch, s.programme, s.email as student_email, s.phone as student_phone
        FROM nodues_requests nr
        JOIN students s ON nr.register_number = s.register_number
-       WHERE nr.career_option IS NOT NULL
+       WHERE nr.career_option IS NOT NULL ${deptClause}
        ORDER BY 
          CASE s.year 
            WHEN 'IV Year' THEN 4 
@@ -24,11 +34,12 @@ exports.getDPCDashboard = async (req, res) => {
            WHEN 'I Year' THEN 1 
            ELSE 0 
          END DESC, 
-         s.full_name ASC`
+         s.full_name ASC`,
+      params
     );
 
-    // Pending Stage 5 DPC Approvals
-    const pendingDPCRequests = await query(`
+    // Pending Stage 2 DPC Approvals
+    const pendingDPCRequestsRaw = await query(`
       SELECT 
         nr.*,
         s.section, s.batch, s.programme, s.email as student_email, s.phone as student_phone,
@@ -37,7 +48,7 @@ exports.getDPCDashboard = async (req, res) => {
       FROM nodues_requests nr
       JOIN nodues_stages ns ON nr.id = ns.request_id AND ns.department_name = 'DPC'
       JOIN students s ON nr.register_number = s.register_number
-      WHERE ns.status = 'Pending'
+      WHERE ns.status = 'Pending' ${deptClause}
       ORDER BY 
         CASE s.year 
           WHEN 'IV Year' THEN 4 
@@ -46,15 +57,21 @@ exports.getDPCDashboard = async (req, res) => {
           WHEN 'I Year' THEN 1 
           ELSE 0 
         END DESC, 
-        s.full_name ASC`
+        s.full_name ASC`,
+      params
     );
+
+    const careerSubmissions = careerSubmissionsRaw.map(r => sanitizeRequest(r, req.user.role));
+    const pendingDPCRequests = pendingDPCRequestsRaw.map(r => sanitizeRequest(r, req.user.role));
 
     // Approved DPC Requests count
     const approvedDPCCount = await getOne(`
       SELECT COUNT(*) as count 
       FROM nodues_stages ns
+      JOIN nodues_requests nr ON ns.request_id = nr.id
       WHERE ns.department_name = 'DPC' AND ns.status = 'Approved'
-    `);
+      ${officerDept ? 'AND nr.department = ?' : ''}
+    `, officerDept ? [officerDept] : []);
 
     // Career Breakdown counts
     const placementCount = careerSubmissions.filter(c => c.career_option === 'Placements').length;
@@ -96,6 +113,10 @@ exports.processDPCAction = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Request ID and Action are required.' });
     }
 
+    if (!['Approve', 'Reject', 'Hold'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Invalid action specified.' });
+    }
+
     const dpc = await getOne('SELECT full_name FROM dpc_profile WHERE employee_id = ?', [empId]);
     const approverName = dpc ? `${dpc.full_name} (DPC)` : 'Department Placement Coordinator (DPC)';
 
@@ -104,64 +125,37 @@ exports.processDPCAction = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No-Dues Request record not found.' });
     }
 
-
-
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
       return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });
     }
 
-    const newStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : 'Hold');
-
-    // Update DPC Stage
-    await query(
-      `UPDATE nodues_stages 
-       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
-       WHERE request_id = ? AND department_name = 'DPC'`,
-      [newStatus, approverName, remarks || `Career Pathway (${request.career_option || 'General'}) verified and cleared by DPC.`, requestId]
-    );
-
-    // Audit Log Entry
-    await logAuditEntry({
+    const transitionResult = await executeStageTransition({
       requestId,
       departmentName: 'DPC',
-      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
-      actorName: approverName,
-      actorRole: 'dpc',
-      statusAfter: newStatus,
-      remarks: remarks || `Career Pathway (${request.career_option || 'General'}) verified and cleared by DPC.`
+      action,
+      remarks: remarks || `Career Pathway (${request.career_option || 'General'}) verified and cleared by DPC.`,
+      actorUser: { username: empId, full_name: approverName, role: 'dpc' }
     });
 
-    if (action === 'Approve') {
-      await query(
-        `INSERT INTO notifications (target_user, title, message, type)
-         VALUES (?, ?, ?, ?)`,
-        [request.register_number, 'DPC Placement Clearance Approved', `Department Placement Coordinator ${approverName} verified your career submission (${request.career_option}) and granted Stage 5 clearance.`, 'success']
-      );
+    if (!transitionResult.success) {
+      return res.status(transitionResult.statusCode || 400).json({ success: false, message: transitionResult.message });
+    }
 
-      // Advance stage to HOD
-      await updateRequestProgress(requestId);
-    } else if (action === 'Reject' || action === 'Hold') {
+    if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
-
-      if (isReject) {
-        await query(
-          `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Department Placement Coordinator (Rejected)' WHERE id = ?`,
-          [requestId]
-        );
-      }
 
       await notifyStudentAndFA({
         registerNumber: request.register_number,
         requestNumber: request.request_number,
         title: `No-Dues Request ${isReject ? 'REJECTED' : 'Put On Hold'} (DPC Stage)`,
-        studentMsg: `Department Placement Coordinator ${approverName} ${actionText} your Stage 5 career clearance. Remarks: ${remarks || 'Document verification pending'}`,
+        studentMsg: `Department Placement Coordinator ${approverName} ${actionText} your Stage 2 career clearance. Remarks: ${remarks || 'Document verification pending'}`,
         faMsg: `URGENT ADVISEE ALERT: The No-Dues application (${request.request_number}) of your advisee ${request.student_name} (${request.register_number}) was ${actionText.toUpperCase()} by Department Placement Coordinator. Remarks: ${remarks || 'Document verification pending'}`,
         type: isReject ? 'danger' : 'warning'
       });
     }
 
-    return res.json({ success: true, message: `Request ${request.request_number} marked as ${newStatus} by DPC.` });
+    return res.json({ success: true, message: `Request ${request.request_number} marked as ${transitionResult.status} by DPC.` });
 
   } catch (error) {
     console.error('Process DPC Action Error:', error);
@@ -185,15 +179,17 @@ exports.bulkApproveDPC = async (req, res) => {
 
     let count = 0;
     for (const item of pendingStages) {
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by DPC Placement Officer.', updated_at = NOW() 
-         WHERE request_id = ? AND department_name = 'DPC'`,
-        [approverName, item.request_id]
-      );
+      const transResult = await executeStageTransition({
+        requestId: item.request_id,
+        departmentName: 'DPC',
+        action: 'Approve',
+        remarks: 'Bulk Approved by DPC Placement Officer.',
+        actorUser: { username: empId, full_name: approverName, role: 'dpc' }
+      });
 
-      await updateRequestProgress(item.request_id);
-      count++;
+      if (transResult.success) {
+        count++;
+      }
     }
 
     return res.json({

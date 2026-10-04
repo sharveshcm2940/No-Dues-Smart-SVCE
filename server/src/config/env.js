@@ -88,6 +88,12 @@ function validateEnv() {
     CERT_HMAC_KEY,
     PUBLIC_BASE_URL,
     CORS_ORIGINS,
+    TRUST_PROXY: process.env.TRUST_PROXY || '1',
+    DB_CONNECTION_LIMIT: parseInt(process.env.DB_CONNECTION_LIMIT || '25', 10),
+    LOG_LEVEL: process.env.LOG_LEVEL || (NODE_ENV === 'production' ? 'info' : 'debug'),
+    BACKUP_RETENTION_DAYS: parseInt(process.env.BACKUP_RETENTION_DAYS || '30', 10),
+    BACKUP_ENCRYPTION_KEY: process.env.BACKUP_ENCRYPTION_KEY || JWT_SECRET,
+    AUDIT_LOG_RETENTION_DAYS: parseInt(process.env.AUDIT_LOG_RETENTION_DAYS || '90', 10),
     SMTP: {
       HOST: process.env.SMTP_HOST || 'smtp.ethereal.email',
       PORT: parseInt(process.env.SMTP_PORT || '587', 10),

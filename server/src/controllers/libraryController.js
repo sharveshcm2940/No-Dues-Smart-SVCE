@@ -1,6 +1,8 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry, executeStageTransition } = require('../utils/workflowHelper');
+const { sanitizeStudentProfile, sanitizeRequest } = require('../utils/dataMasking');
+const { getOfficerDepartment } = require('../middleware/authorizeResource');
 
 // Get Library Staff Dashboard Statistics
 exports.getLibraryDashboard = async (req, res) => {
@@ -171,48 +173,21 @@ exports.processNoDuesAction = async (req, res) => {
       });
     }
 
-    const newStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : 'Hold');
-
-    // Update Department Library Stage
-    await query(
-      `UPDATE nodues_stages 
-       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
-       WHERE request_id = ? AND department_name = 'Department Library'`,
-      [newStatus, approverName, remarks || (action === 'Approve' ? 'Department Library clearance granted.' : 'Put on hold by Department Library.'), requestId]
-    );
-
-    // Audit Log Entry
-    await logAuditEntry({
+    const transitionResult = await executeStageTransition({
       requestId,
       departmentName: 'Department Library',
-      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
-      actorName: approverName,
-      actorRole: 'library_staff',
-      statusAfter: newStatus,
-      remarks: remarks || (action === 'Approve' ? 'Department Library clearance granted.' : 'Put on hold by Department Library.')
+      action,
+      remarks: remarks || (action === 'Approve' ? 'Department Library clearance granted.' : 'Put on hold by Department Library.'),
+      actorUser: { username: staffId, full_name: approverName, role: 'library_staff' }
     });
 
-    // If Approved, update progress and unlock next stage (Faculty Advisor)
-    if (action === 'Approve') {
-      await query(
-        `INSERT INTO notifications (target_user, title, message, type)
-         VALUES (?, ?, ?, ?)`,
-        [request.register_number, 'Department Library Approved', `Department Library has approved your No-Dues request ${request.request_number}.`, 'success']
-      );
+    if (!transitionResult.success) {
+      return res.status(transitionResult.statusCode || 400).json({ success: false, message: transitionResult.message });
+    }
 
-      // Check parallel clearances
-      await updateRequestProgress(requestId);
-    } else if (action === 'Reject' || action === 'Hold') {
+    if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
-
-      if (isReject) {
-        await query(
-          `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Department Library (Rejected)' WHERE id = ?`,
-          [requestId]
-        );
-      }
-
       await notifyStudentAndFA({
         registerNumber: request.register_number,
         requestNumber: request.request_number,
@@ -225,7 +200,7 @@ exports.processNoDuesAction = async (req, res) => {
 
     return res.json({
       success: true,
-      message: `No-Dues Request ${request.request_number} marked as ${newStatus} successfully.`
+      message: `No-Dues Request ${request.request_number} marked as ${transitionResult.status} successfully.`
     });
 
   } catch (error) {
@@ -317,6 +292,18 @@ exports.deleteBook = async (req, res) => {
 // Student Records List & Detailed Profile
 exports.getStudentRecords = async (req, res) => {
   try {
+    const role = req.user.role;
+    let deptFilter = '';
+    const params = [];
+
+    if (role === 'library_staff') {
+      const officerDept = await getOfficerDepartment(req.user);
+      if (officerDept) {
+        deptFilter = 'WHERE s.department = ?';
+        params.push(officerDept);
+      }
+    }
+
     const students = await query(`
       SELECT 
         s.*,
@@ -324,6 +311,7 @@ exports.getStudentRecords = async (req, res) => {
         (SELECT COALESCE(SUM(fine_amount), 0) FROM borrow_records br WHERE br.register_number = s.register_number AND br.fine_status = 'Unpaid') as unpaid_fine,
         (SELECT overall_status FROM nodues_requests nr WHERE nr.register_number = s.register_number ORDER BY id DESC LIMIT 1) as nodues_status
       FROM students s
+      ${deptFilter}
       ORDER BY 
         CASE s.year 
           WHEN 'IV Year' THEN 4 
@@ -333,8 +321,10 @@ exports.getStudentRecords = async (req, res) => {
           ELSE 0 
         END DESC, 
         s.full_name ASC
-    `);
-    return res.json({ success: true, students });
+    `, params);
+
+    const sanitizedStudents = students.map(st => sanitizeStudentProfile(st, req.user.role));
+    return res.json({ success: true, students: sanitizedStudents });
   } catch (error) {
     console.error('Get Student Records Error:', error);
     return res.status(500).json({ success: false, message: 'Error loading student directory.' });
@@ -371,9 +361,9 @@ exports.getStudentDetail = async (req, res) => {
     return res.json({
       success: true,
       data: {
-        student,
+        student: sanitizeStudentProfile(student, req.user.role),
         borrowHistory,
-        noduesRequest,
+        noduesRequest: sanitizeRequest(noduesRequest, req.user.role),
         stages
       }
     });
@@ -665,22 +655,17 @@ exports.bulkApproveNoDues = async (req, res) => {
         continue;
       }
 
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Department Library.', updated_at = NOW() 
-         WHERE request_id = ? AND department_name = 'Department Library'`,
-        [approverName, item.request_id]
-      );
+      const transResult = await executeStageTransition({
+        requestId: item.request_id,
+        departmentName: 'Department Library',
+        action: 'Approve',
+        remarks: 'Bulk Approved by Department Library.',
+        actorUser: { username: staffId, full_name: approverName, role: 'library_staff' }
+      });
 
-      await query(
-        `INSERT INTO notifications (target_user, title, message, type)
-         VALUES (?, ?, ?, ?)`,
-        [item.register_number, 'Department Library Approved', `Department Library has approved your No-Dues request ${item.request_number}.`, 'success']
-      );
-
-      // Check parallel clearances
-      await updateRequestProgress(item.request_id);
-      approvedCount++;
+      if (transResult.success) {
+        approvedCount++;
+      }
     }
 
     return res.json({

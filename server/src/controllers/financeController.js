@@ -1,6 +1,7 @@
 const { query, getOne } = require('../config/db');
 const { notifyStudentAndFA } = require('../utils/notifier');
-const { updateRequestProgress, logAuditEntry } = require('../utils/workflowHelper');
+const { updateRequestProgress, logAuditEntry, executeStageTransition } = require('../utils/workflowHelper');
+const { sanitizeRequest } = require('../utils/dataMasking');
 
 // Get Finance Dashboard Stats & Requests
 exports.getFinanceDashboard = async (req, res) => {
@@ -10,8 +11,8 @@ exports.getFinanceDashboard = async (req, res) => {
     // Finance Profile
     const finance = await getOne('SELECT * FROM finance_profile WHERE employee_id = ?', [empId]);
 
-    // All active requests with student details (visible to Finance only after 3 initial departments approve)
-    const allRequests = await query(`
+    // All active requests with student details
+    const allRequestsRaw = await query(`
       SELECT nr.*, s.section, s.batch, s.programme, s.email as student_email, s.phone as student_phone
       FROM nodues_requests nr
       JOIN nodues_stages ns ON nr.id = ns.request_id AND ns.department_name = 'Finance'
@@ -28,8 +29,8 @@ exports.getFinanceDashboard = async (req, res) => {
         s.full_name ASC
     `);
 
-    // Pending Finance clearances (visible ONLY when DPC, Central Lib, and Dept Lib are ALL Approved)
-    const pendingRequests = await query(`
+    // Pending Finance clearances
+    const pendingRequestsRaw = await query(`
       SELECT 
         nr.*,
         s.section, s.batch, s.programme, s.email as student_email, s.phone as student_phone,
@@ -39,13 +40,6 @@ exports.getFinanceDashboard = async (req, res) => {
       JOIN nodues_stages ns ON nr.id = ns.request_id AND ns.department_name = 'Finance'
       JOIN students s ON nr.register_number = s.register_number
       WHERE ns.status = 'Pending'
-        AND (
-          SELECT COUNT(*) 
-          FROM nodues_stages init_s 
-          WHERE init_s.request_id = nr.id 
-            AND init_s.department_name IN ('DPC', 'Central Library', 'Department Library') 
-            AND init_s.status = 'Approved'
-        ) = 3
       ORDER BY 
         CASE s.year 
           WHEN 'IV Year' THEN 4 
@@ -56,6 +50,9 @@ exports.getFinanceDashboard = async (req, res) => {
         END DESC, 
         s.full_name ASC
     `);
+
+    const allRequests = allRequestsRaw.map(r => sanitizeRequest(r, req.user.role));
+    const pendingRequests = pendingRequestsRaw.map(r => sanitizeRequest(r, req.user.role));
 
     // Approved Finance count
     const approvedCount = await getOne(`
@@ -94,6 +91,10 @@ exports.processFinanceAction = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Request ID and Action are required.' });
     }
 
+    if (!['Approve', 'Reject', 'Hold'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Invalid action specified.' });
+    }
+
     const officer = await getOne('SELECT full_name FROM finance_profile WHERE employee_id = ?', [empId]);
     const approverName = officer ? `${officer.full_name} (Finance Officer)` : 'Finance Officer';
 
@@ -102,68 +103,25 @@ exports.processFinanceAction = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No-Dues Request record not found.' });
     }
 
-    if (action === 'Approve') {
-      const stages = await query('SELECT * FROM nodues_stages WHERE request_id = ?', [requestId]);
-      const dpcStage = stages.find(s => s.department_name === 'DPC');
-      const mainLibStage = stages.find(s => s.department_name === 'Central Library');
-      const deptLibStage = stages.find(s => s.department_name === 'Department Library');
-
-      const allInitApproved = (dpcStage && dpcStage.status === 'Approved') &&
-                              (mainLibStage && mainLibStage.status === 'Approved') &&
-                              (deptLibStage && deptLibStage.status === 'Approved');
-
-      if (!allInitApproved) {
-        return res.status(400).json({
-          success: false,
-          message: 'Finance clearance is locked until DPC, Central Library, and Department Library have ALL approved.'
-        });
-      }
-    }
-
     if (action === 'Reject' && (!remarks || remarks.trim() === '')) {
       return res.status(400).json({ success: false, message: 'Rejection remarks are mandatory.' });
     }
 
-    const newStatus = action === 'Approve' ? 'Approved' : (action === 'Reject' ? 'Rejected' : 'Hold');
-
-    // Update Finance Stage
-    await query(
-      `UPDATE nodues_stages 
-       SET status = ?, approved_by = ?, remarks = ?, updated_at = NOW()
-       WHERE request_id = ? AND department_name = 'Finance'`,
-      [newStatus, approverName, remarks || 'Tuition and laboratory accounts cleared.', requestId]
-    );
-
-    // Audit Log Entry
-    await logAuditEntry({
+    const transitionResult = await executeStageTransition({
       requestId,
       departmentName: 'Finance',
-      actionType: action === 'Approve' ? 'Approval' : (action === 'Reject' ? 'Rejection' : 'Hold'),
-      actorName: approverName,
-      actorRole: 'finance',
-      statusAfter: newStatus,
-      remarks: remarks || (action === 'Approve' ? 'Tuition and laboratory accounts cleared.' : 'Dues outstanding/on hold by Finance.')
+      action,
+      remarks: remarks || (action === 'Approve' ? 'Tuition and laboratory accounts cleared.' : 'Dues outstanding/on hold by Finance.'),
+      actorUser: { username: empId, full_name: approverName, role: 'finance' }
     });
 
-    if (action === 'Approve') {
-      await query(
-        `INSERT INTO notifications (target_user, title, message, type)
-         VALUES (?, ?, ?, ?)`,
-        [request.register_number, 'Finance Clearance Approved', `Finance Section (${approverName}) has cleared your No-Dues request.`, 'success']
-      );
+    if (!transitionResult.success) {
+      return res.status(transitionResult.statusCode || 400).json({ success: false, message: transitionResult.message });
+    }
 
-      // Check parallel clearance to unlock FA
-      await updateRequestProgress(requestId);
-    } else if (action === 'Reject' || action === 'Hold') {
+    if (action === 'Reject' || action === 'Hold') {
       const isReject = action === 'Reject';
       const actionText = isReject ? 'rejected' : 'placed on hold';
-
-      if (isReject) {
-        await query(
-          `UPDATE nodues_requests SET overall_status = 'Rejected', current_stage = 'Finance (Rejected)' WHERE id = ?`,
-          [requestId]
-        );
-      }
 
       await notifyStudentAndFA({
         registerNumber: request.register_number,
@@ -175,7 +133,7 @@ exports.processFinanceAction = async (req, res) => {
       });
     }
 
-    return res.json({ success: true, message: `Request ${request.request_number} marked as ${newStatus} by Finance.` });
+    return res.json({ success: true, message: `Request ${request.request_number} marked as ${transitionResult.stageStatus} by Finance.` });
 
   } catch (error) {
     console.error('Process Finance Action Error:', error);
@@ -206,21 +164,17 @@ exports.bulkApproveFinance = async (req, res) => {
 
     let count = 0;
     for (const item of pendingRequests) {
-      await query(
-        `UPDATE nodues_stages 
-         SET status = 'Approved', approved_by = ?, remarks = 'Bulk Approved by Finance Section.', updated_at = NOW()
-         WHERE request_id = ? AND department_name = 'Finance'`,
-        [approverName, item.request_id]
-      );
+      const transResult = await executeStageTransition({
+        requestId: item.request_id,
+        departmentName: 'Finance',
+        action: 'Approve',
+        remarks: 'Bulk Approved by Finance Section.',
+        actorUser: { username: empId, full_name: approverName, role: 'finance' }
+      });
 
-      await query(
-        `INSERT INTO notifications (target_user, title, message, type)
-         VALUES (?, ?, ?, ?)`,
-        [item.register_number, 'Finance Clearance Approved', `Finance Section has cleared your No-Dues request ${item.request_number}.`, 'success']
-      );
-
-      await updateRequestProgress(item.request_id);
-      count++;
+      if (transResult.success) {
+        count++;
+      }
     }
 
     return res.json({ success: true, message: `Successfully bulk approved ${count} Finance clearance requests.` });

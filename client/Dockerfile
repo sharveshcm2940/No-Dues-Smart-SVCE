@@ -1,24 +1,32 @@
-# Stage 1: Build React/Vite Frontend
-FROM node:18-alpine AS builder
+# ==============================================================================
+# SVCE Smart No-Dues ERP - Production Client Dockerfile (React 18 + Vite PWA)
+# ==============================================================================
 
+# Stage 1: Build Static Assets
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy dependency manifests
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
-# Copy source code & build production bundle
 COPY . .
 RUN npm run build
 
 # Stage 2: Serve via Nginx
-FROM nginx:alpine
+FROM nginx:1.25-alpine AS runner
 
-# Copy built dist files
+# Remove default nginx static assets
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy built production assets
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy Nginx config with API proxy to backend container
+# Copy Nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Add Healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:80/ || exit 1
 
 EXPOSE 80
 

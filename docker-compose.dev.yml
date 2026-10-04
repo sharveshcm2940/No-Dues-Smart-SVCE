@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # MySQL 8 Database Container (Dev)
+  db:
+    image: mysql:8.0
+    container_name: svce_nodues_dev_db
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-svce_dev_root_pwd_2026}
+      MYSQL_DATABASE: ${DB_NAME:-svce_nodues}
+      MYSQL_USER: ${DB_USER:-svce_app}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-svce_dev_app_pwd_2026}
+    ports:
+      - "3306:3306"
+    volumes:
+      - nodues_dev_db_data:/var/lib/mysql
+      - ./mysql_workbench_setup.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-svce_dev_root_pwd_2026}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - svce_dev_net
+
+  # Express Backend API Container (Dev with live reload)
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: svce_nodues_dev_backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=development
+      - PORT=5000
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=${DB_USER:-svce_app}
+      - DB_PASSWORD=${DB_PASSWORD:-svce_dev_app_pwd_2026}
+      - DB_NAME=${DB_NAME:-svce_nodues}
+      - JWT_SECRET=${JWT_SECRET:-svce_nodues_dev_jwt_secret_min_32_chars_long!}
+      - CERT_HMAC_KEY=${CERT_HMAC_KEY:-svce_nodues_dev_cert_hmac_key_min_32_chars_long!}
+      - SESSION_SECRET=${SESSION_SECRET:-svce_nodues_dev_session_secret_min_32_chars!}
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - TRUST_PROXY=1
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+      - nodues_dev_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - svce_dev_net
+
+  # React 18 + Vite Frontend Container (Dev)
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: svce_nodues_dev_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - svce_dev_net
+
+volumes:
+  nodues_dev_db_data:
+  nodues_dev_uploads:
+
+networks:
+  svce_dev_net:
+    driver: bridge
