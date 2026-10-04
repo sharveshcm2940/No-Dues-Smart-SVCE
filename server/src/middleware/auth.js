@@ -21,10 +21,11 @@ const authenticateToken = async (req, res, next) => {
 
     // Check forced password change flag
     // Allow password update and profile info queries to proceed
-    const isExemptPath = req.baseUrl === '/api' && (
-      req.path === '/auth/password' ||
-      req.path === '/auth/logout' ||
-      req.path === '/auth/me'
+    const fullPath = (req.originalUrl || req.baseUrl + req.path).split('?')[0].replace(/\/+/g, '/');
+    const isExemptPath = (
+      fullPath === '/api/auth/password' ||
+      fullPath === '/api/auth/logout' ||
+      fullPath === '/api/auth/me'
     );
 
     if (decodedUser.must_change_password && !isExemptPath) {

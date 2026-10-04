@@ -495,6 +495,7 @@ export const StudentDashboard = () => {
             <DigitalCertificate 
               activeRequest={activeRequest} 
               profile={profile} 
+              stages={dashboardData?.stages || stages || []}
               approvedCertificates={dashboardData?.approvedCertificates || []}
             />
           )}

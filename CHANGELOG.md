@@ -5,6 +5,31 @@ All notable changes to the **SVCE Smart No-Dues ERP** project are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-04
+
+### Added
+- **Modular Domain Services (Microservices-Style) Architecture**:
+  - Reorganized backend from monolithic flat controllers/routes into decoupled business domain modules under `server/src/modules/`:
+    - `modules/auth/`: Authentication, session lifecycle, password policy, and token rotation.
+    - `modules/clearance/`: Clearance state machine, stage transitions, SLA calculation, and student/officer pipelines.
+    - `modules/library/`: Department & central library clearance, catalog management, fines calculation, and payments.
+    - `modules/complaints/`: Unified grievance and complaint resolution desk.
+    - `modules/admin/`: System settings, role/user administration, and high-throughput bulk CSV ingestion.
+    - `modules/audit/`: SHA-256 tamper-evident hash chaining and DPDP Act 2023 consent tracking.
+    - `modules/files/`: Secure file storage, document download, and profile photo processing.
+  - **Unified API Gateway (`server/src/gateway/apiGateway.js`)**: Routes requests across domain services, manages Server-Sent Events (SSE), and handles rate-limited public verification endpoints while maintaining 100% backward compatibility for all existing client routes.
+- **Authentic Institutional SVCE No Due Certificate (Matching Form FT/GN/51/01/08.04.15)**:
+  - Redesigned `DigitalCertificate.jsx` to pixel-perfectly match the official SVCE physical certificate layout.
+  - Extracted and integrated the high-resolution circular SVCE college seal emblem (`/svce_seal.png`).
+  - Implemented exact 8-row black-bordered clearance grid featuring Student Details, Branch, Section & Roll No, Department Library, Faculty Advisor, HOD Signature banner, Accounts Section, Central Library, and Student Signature.
+  - Integrated bottom mandatory institutional legal notice: `"DUES, IF ANY ARISES, WILL BE COMMUNICATED AT THE APPROPRIATE TIME"`.
+  - Embedded high-res QR code linking to `/verify/:token` for instant smartphone camera verification against the tamper-evident registry.
+- **Flexible Multi-Identifier Authentication**:
+  - Upgraded authentication engine in `authController.login` to support login by Register Number/Employee ID (e.g. `EMP-FA-IT-03`), College Email (e.g. `ranjith.v@svce.ac.in`), Full Name (e.g. `V.Ranjith`), or First Name (e.g. `Ranjith`).
+  - Reset and synchronized default passwords for all 110 institutional users and faculty advisors to `Svce@2026!`, clearing legacy lockouts.
+- **Root Directory Cleanup & Simplification**:
+  - Relocated database setup guides and SQL workbench assets into `docs/` (`docs/MYSQL_WORKBENCH_GUIDE.md`, `docs/mysql_workbench_setup.sql`).
+
 ## [3.2.0-qa-security-documentation-vapt] - 2026-10-04
 
 ### Added

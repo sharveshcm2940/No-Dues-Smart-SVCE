@@ -1,10 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Download, Printer, Share2, Award, ShieldCheck, CheckCircle2, History, ChevronRight } from 'lucide-react';
-import SVCELogo from '../common/SVCELogo';
+import { Download, Printer, Share2, Award, ShieldCheck, CheckCircle2, History, ExternalLink } from 'lucide-react';
 import { useAlert } from '../../context/AlertContext';
 
-export const DigitalCertificate = ({ activeRequest, profile, approvedCertificates = [] }) => {
+export const DigitalCertificate = ({ activeRequest, profile, stages = [], approvedCertificates = [] }) => {
   const { showAlert } = useAlert();
   const certificateRef = useRef(null);
 
@@ -40,7 +39,7 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
         </div>
         <h3 className="text-lg font-bold text-slate-800 tracking-tight">No Certificates Issued Yet</h3>
         <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
-          The Official SVCE Digital No-Dues Certificate will be generated automatically once all 6 institutional departments (Finance, Central Library, Dept Library - Sivakumar E, Faculty Advisor, DPC, HOD - Dr V Vidhya) approve your clearance application.
+          The Official SVCE Digital No-Dues Certificate will be generated automatically once all institutional departments (Dept Library, Faculty Advisor, HOD, Accounts Section, and Central Library) approve your clearance application.
         </p>
       </div>
     );
@@ -52,6 +51,23 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
   const publicBaseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
   const verifyUrl = `${publicBaseUrl}/verify/${certToken}`;
 
+  // Stage lookup helpers
+  const getStageInfo = (namePattern) => {
+    const stage = stages.find(s => s.department_name && s.department_name.toLowerCase().includes(namePattern.toLowerCase()));
+    if (!stage) return { status: 'Approved', approver: '', date: certDate };
+    return {
+      status: stage.status,
+      approver: stage.approved_by || '',
+      date: stage.updated_at ? new Date(stage.updated_at).toLocaleDateString() : certDate
+    };
+  };
+
+  const deptLib = getStageInfo('Department Library');
+  const fa = getStageInfo('Faculty Advisor');
+  const hod = getStageInfo('Head of Department');
+  const accounts = getStageInfo('Finance') || getStageInfo('Accounts');
+  const centralLib = getStageInfo('Central Library');
+
   const handlePrint = () => {
     window.print();
   };
@@ -61,11 +77,11 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
       navigator.share({
         title: 'SVCE Digital No-Dues Clearance Certificate',
         text: `No-Dues Certificate ${certNumber} for ${profile?.full_name}`,
-        url: window.location.href,
+        url: verifyUrl,
       }).catch(() => {});
     } else {
-      navigator.clipboard.writeText(`Certificate No: ${certNumber}`).then(() => {
-        showAlert(`Certificate No. ${certNumber} copied to clipboard!`, 'success');
+      navigator.clipboard.writeText(verifyUrl).then(() => {
+        showAlert(`Verification Link copied to clipboard!`, 'success');
       }).catch(() => {
         showAlert(`Certificate No: ${certNumber}`, 'info');
       });
@@ -77,7 +93,7 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
       
       {/* HISTORICAL CERTIFICATES SELECTOR BAR (FOR PREVIOUS ISSUED CERTIFICATES) */}
       {certList.length > 1 && (
-        <div className="bg-gradient-to-r from-slate-900 to-brand-950 p-4 rounded-lg text-white shadow-md flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-4 rounded-lg text-white shadow-md flex flex-wrap items-center justify-between gap-3 no-print">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-amber-400">
               <History className="w-4 h-4" />
@@ -105,16 +121,16 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
       )}
 
       {/* Top Action Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-lg border border-slate-200 shadow-xs no-print">
         <div>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             <h3 className="text-sm font-bold text-slate-800">
-              Verified SVCE Institutional Clearance Certificate {selectedCert.id !== certList[0].id && '(Previously Issued)'}
+              Official SVCE No Due Certificate {selectedCert.id !== certList[0].id && '(Previously Issued)'}
             </h3>
           </div>
           <p className="text-xs text-slate-500">
-            Certificate ID: <span className="font-mono font-bold text-slate-700">{certNumber}</span> | Issued Date: {certDate}
+            Form Ref: <span className="font-mono font-bold text-slate-700">FT/GN/51/01/08.04.15</span> | Cert ID: <span className="font-mono font-bold text-slate-700">{certNumber}</span> | Issued: {certDate}
           </p>
         </div>
 
@@ -124,11 +140,11 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
             className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 border border-slate-300"
           >
             <Printer className="w-4 h-4 text-slate-600" />
-            <span>Print Certificate</span>
+            <span>Print Official Form</span>
           </button>
           <button
             onClick={handlePrint}
-            className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+            className="px-3.5 py-2 bg-slate-900 hover:bg-black text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
           >
             <Download className="w-4 h-4" />
             <span>Save PDF Document</span>
@@ -136,128 +152,251 @@ export const DigitalCertificate = ({ activeRequest, profile, approvedCertificate
           <button
             onClick={handleShare}
             className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg transition-colors"
-            title="Share Verification"
+            title="Share Verification Link"
           >
             <Share2 className="w-4 h-4" />
           </button>
+          <a
+            href={verifyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 border border-slate-200 hover:bg-slate-50 text-brand-600 rounded-lg transition-colors"
+            title="Open Public Verification"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
         </div>
       </div>
 
-      {/* Official Certificate Paper Document (Printable Target) */}
-      <div className="overflow-x-auto pb-2">
+      {/* Official Certificate Paper Document (Matching Exact Institutional Screenshot) */}
+      <div className="overflow-x-auto pb-4">
         <div 
           id="printable-certificate"
           ref={certificateRef}
-          className="bg-white rounded-lg border-2 sm:border-4 border-slate-800 p-4 sm:p-12 shadow-md relative overflow-hidden text-slate-900 font-serif max-w-4xl mx-auto min-w-[320px]"
+          className="bg-white p-6 sm:p-10 shadow-lg border border-slate-300 max-w-[950px] mx-auto min-w-[700px] text-black font-sans relative"
+          style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
         >
-          
-          {/* Subtle Watermark BG */}
-          <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none select-none font-sans font-black text-6xl sm:text-8xl tracking-widest text-slate-900">
-            CLEARED
-          </div>
 
-          {/* Outer ERP Border frame */}
-          <div className="border border-slate-300 p-4 sm:p-8 relative z-10 bg-white/95">
-          
-          {/* Header Seal & Title */}
-          <div className="text-center pb-6 border-b border-slate-300">
-            <div className="flex justify-center mb-3">
-              <SVCELogo className="h-16 sm:h-20" />
-            </div>
+          {/* ========================================================================= */}
+          {/* HEADER SECTION (SVCE SEAL, COLLEGE NAME, FORM NUMBER & TITLE)             */}
+          {/* ========================================================================= */}
+          <div className="flex items-center justify-between gap-4 mb-2">
             
-            <div className="inline-block mt-2 px-6 py-1.5 bg-slate-900 text-white font-sans font-bold text-xs uppercase tracking-widest rounded-sm">
-              OFFICIAL NO-DUES CLEARANCE CERTIFICATE
+            {/* SVCE Official Circular Emblem */}
+            <div className="shrink-0 w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
+              <img 
+                src="/svce_seal.png" 
+                alt="SVCE Seal" 
+                className="w-full h-full object-contain"
+              />
             </div>
+
+            {/* Institution Title & Document Reference Code */}
+            <div className="grow text-center">
+              <h1 className="text-xl sm:text-2xl font-black text-black tracking-normal uppercase leading-tight">
+                SRI VENKATESWARA COLLEGE OF ENGINEERING
+              </h1>
+              
+              <div className="text-right text-xs sm:text-sm font-semibold text-black mt-1">
+                FT/<span className="italic font-bold">GN</span>/51/01/08.04.15
+              </div>
+            </div>
+
           </div>
 
-          {/* Body Statement */}
-          <div className="py-8 font-sans text-xs leading-relaxed text-slate-800 space-y-4">
-            <div className="flex justify-between items-center text-xs font-mono text-slate-600 border-b border-slate-100 pb-2">
-              <span>CERTIFICATE NO: <strong>{certNumber}</strong></span>
-              <span>ISSUANCE DATE: <strong>{certDate}</strong></span>
-            </div>
-
-            <p className="text-sm text-slate-800 leading-relaxed font-serif pt-2">
-              This is to certify that student <strong>{profile?.full_name || selectedCert.student_name}</strong> bearing 
-              Register Number <strong>{selectedCert.register_number}</strong> (ID Card No: <strong>{selectedCert.id_card_number}</strong>) 
-              enrolled in <strong>{profile?.programme || 'B.Tech IT'}</strong>, Batch <strong>{profile?.batch || '2022-2026'}</strong> has 
-              satisfactorily cleared all non-academic, financial, central library, IT department library (Sivakumar E), faculty advisor, DPC, and HOD (Dr V Vidhya) clearance requirements across Sri Venkateswara College of Engineering.
-            </p>
-
-            {/* Department Sign-Off Grid */}
-            <div className="my-6 bg-slate-50 border border-slate-200 rounded p-4 font-sans text-xs">
-              <h4 className="font-bold text-slate-800 mb-2 uppercase text-[10px] tracking-wider text-slate-500">
-                VERIFIED & APPROVED INSTITUTIONAL SECTORS
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>1. SVCE Finance Office</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>2. Central Library</span>
-                </div>
-                <div className="flex items-center gap-2 font-bold text-brand-700">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>3. IT Dept Library (Sivakumar E)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>4. Faculty Advisor ({profile?.advisor_name || 'V Praveenkumar'})</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>5. DPC Committee</span>
-                </div>
-                <div className="flex items-center gap-2 font-bold text-emerald-800">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>6. HOD (Dr V Vidhya)</span>
-                </div>
-              </div>
-            </div>
+          {/* Centered Document Title */}
+          <div className="text-center my-3">
+            <h2 className="text-sm sm:text-base font-bold text-black uppercase tracking-normal">
+              NO DUE CERTIFICATE– III V VII sem UG &amp; III sem  PG ( AY 2026 – 2027)
+            </h2>
           </div>
 
-          {/* Footer Digital Signatures & QR Stamp */}
-          <div className="pt-6 border-t border-slate-300 grid grid-cols-1 sm:grid-cols-3 items-end gap-6 font-sans">
-            
-            {/* QR Code Verification Stamp */}
-            <div className="text-center sm:text-left">
-              <div className="bg-white p-2 border border-slate-200 inline-block rounded shadow-xs">
-                <QRCodeSVG value={verifyUrl} size={85} level="H" />
+          {/* ========================================================================= */}
+          {/* MAIN INSTITUTIONAL CLEARANCE GRID (EXACT SCREENSHOT LAYOUT)               */}
+          {/* ========================================================================= */}
+          <table 
+            className="w-full border-collapse border-[2.5px] border-black text-black text-xs sm:text-sm"
+            style={{ border: '2.5px solid black' }}
+          >
+            <tbody>
+
+              {/* ROW 1: Student Name, Reg.No, Admission NO */}
+              <tr className="border-b border-black">
+                <td className="border-r border-black p-2 sm:p-2.5 w-[42%]">
+                  <span className="font-normal text-black">Student Name: </span>
+                  <span className="font-bold uppercase text-black ml-1">
+                    {profile?.full_name || selectedCert.student_name}
+                  </span>
+                </td>
+                <td className="border-r border-black p-2 sm:p-2.5 w-[28%]">
+                  <span className="font-normal text-black">Reg.No: </span>
+                  <span className="font-bold text-black ml-1">
+                    {selectedCert.register_number || profile?.register_number}
+                  </span>
+                </td>
+                <td className="p-2 sm:p-2.5 w-[30%]">
+                  <span className="font-normal text-black">Admission NO </span>
+                  <span className="font-bold text-black ml-1">
+                    {profile?.admission_no || profile?.id_card_number || selectedCert.id_card_number || 'ADM-' + (selectedCert.register_number || '2022')}
+                  </span>
+                </td>
+              </tr>
+
+              {/* ROW 2: Branch, Section & Roll No */}
+              <tr className="border-b border-black">
+                <td className="border-r border-black p-2 sm:p-2.5">
+                  <span className="font-normal text-black">Branch: </span>
+                  <span className="font-bold text-black ml-1">
+                    {profile?.department || profile?.branch || 'Information Technology'}
+                  </span>
+                </td>
+                <td colSpan={2} className="p-2 sm:p-2.5">
+                  <span className="font-normal text-black">Section &amp; Roll No: </span>
+                  <span className="font-bold text-black ml-1">
+                    {profile?.section || 'A'} &amp; {profile?.roll_no || selectedCert.register_number}
+                  </span>
+                </td>
+              </tr>
+
+              {/* ROW 3: Department Library */}
+              <tr className="border-b border-black">
+                <td className="border-r border-black p-2 sm:p-2.5 font-normal text-black">
+                  Department Library
+                </td>
+                <td colSpan={2} className="p-2 sm:p-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-800 text-xs sm:text-sm tracking-wide">
+                      CLEARED / NIL DUES
+                    </span>
+                    <span className="text-[11px] text-slate-700 italic font-medium">
+                      {deptLib.approver || 'Sivakumar E (IT Dept Library)'} • {deptLib.date}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+              {/* ROW 4: Faculty Advisor */}
+              <tr className="border-b border-black">
+                <td className="border-r border-black p-2 sm:p-2.5 font-normal text-black">
+                  Faculty Advisor
+                </td>
+                <td colSpan={2} className="p-2 sm:p-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-800 text-xs sm:text-sm tracking-wide">
+                      RECOMMENDED &amp; APPROVED
+                    </span>
+                    <span className="text-[11px] text-slate-700 italic font-medium">
+                      {fa.approver || profile?.advisor_name || 'V Praveenkumar'} • {fa.date}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+              {/* ROW 5: Signature of HOD (FULL WIDTH BANNER) */}
+              <tr className="border-b border-black">
+                <td colSpan={3} className="p-2 sm:p-2.5 text-center">
+                  <div className="font-bold text-black text-sm tracking-wide">
+                    Signature of HOD
+                  </div>
+                  <div className="mt-1 flex items-center justify-center gap-3">
+                    <span className="inline-block px-2.5 py-0.5 border border-emerald-700 rounded text-emerald-800 text-xs font-bold bg-emerald-50/50">
+                      Digitally Approved &amp; Signed
+                    </span>
+                    <span className="text-xs text-slate-800 font-semibold">
+                      {hod.approver || 'Dr. V. Vidhya, Professor & HOD (IT)'} • {hod.date}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+              {/* ROW 6: Office - Accounts section */}
+              <tr className="border-b border-black">
+                <td className="border-r border-black p-2 sm:p-2.5 font-normal text-black">
+                  Office - &nbsp;Accounts section
+                </td>
+                <td colSpan={2} className="p-2 sm:p-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-800 text-xs sm:text-sm tracking-wide">
+                      CLEARED / NO DUES PENDING
+                    </span>
+                    <span className="text-[11px] text-slate-700 italic font-medium">
+                      {accounts.approver || 'Finance & Accounts Officer'} • {accounts.date}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+              {/* ROW 7: Central Library */}
+              <tr className="border-b border-black">
+                <td className="border-r border-black p-2 sm:p-2.5 font-normal text-black">
+                  Central Library
+                </td>
+                <td colSpan={2} className="p-2 sm:p-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-800 text-xs sm:text-sm tracking-wide">
+                      CLEARED / NIL DUES
+                    </span>
+                    <span className="text-[11px] text-slate-700 italic font-medium">
+                      {centralLib.approver || 'Central Library Staff'} • {centralLib.date}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+              {/* ROW 8: Signature of the student */}
+              <tr>
+                <td colSpan={3} className="p-2.5 sm:p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-normal text-black">Signature of the student :: </span>
+                      <span className="font-serif italic font-bold text-slate-800 text-sm sm:text-base ml-2">
+                        {profile?.full_name || selectedCert.student_name}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      (Digitally Signed Upon Application)
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+            </tbody>
+          </table>
+
+          {/* ========================================================================= */}
+          {/* FOOTER NOTICE (MANDATORY INSTITUTIONAL NOTICE)                             */}
+          {/* ========================================================================= */}
+          <div className="text-center font-bold text-black text-xs sm:text-sm mt-3 tracking-normal">
+            &quot;DUES, IF ANY ARISES, WILL BE COMMUNICATED AT THE APPROPRIATE TIME&quot;
+          </div>
+
+          {/* ========================================================================= */}
+          {/* DIGITAL AUTHENTICITY STAMP & VERIFICATION QR STRIP                         */}
+          {/* ========================================================================= */}
+          <div className="mt-6 pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4 text-slate-600 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-white border border-slate-300 rounded shadow-2xs">
+                <QRCodeSVG value={verifyUrl} size={68} level="H" />
               </div>
-              <p className="text-[10px] text-slate-500 font-mono mt-1">Scan to Verify Authenticity</p>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-700">Official Digital Verification</p>
+                <p className="text-[10px] text-slate-500 font-mono">Scan QR or visit <span className="underline">{publicBaseUrl}/verify/...</span></p>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">Cert No: <strong className="text-slate-800">{certNumber}</strong></p>
+              </div>
             </div>
 
-            {/* Digital Signature 1 */}
-            <div className="text-center">
-              <div className="h-10 flex items-center justify-center font-serif text-slate-600 text-xs italic">
-                [ Digitally Signed ]
+            <div className="text-right">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-md font-bold text-[11px]">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>HMAC-SHA256 Cryptographically Secured</span>
               </div>
-              <div className="border-t border-slate-400 pt-1">
-                <p className="font-bold text-xs text-slate-800">{profile?.advisor_name || 'V Praveenkumar'}</p>
-                <p className="text-[11px] text-slate-500">Assigned Faculty Advisor</p>
-              </div>
+              <p className="text-[10px] text-slate-400 mt-1 font-mono">Sri Venkateswara College of Engineering (Autonomous)</p>
             </div>
-
-            {/* Digital Signature 2 */}
-            <div className="text-center sm:text-right">
-              <div className="h-10 flex items-center justify-center font-serif text-slate-600 text-xs italic">
-                [ Digitally Signed ]
-              </div>
-              <div className="border-t border-slate-400 pt-1">
-                <p className="font-bold text-xs text-slate-800">Dr V Vidhya</p>
-                <p className="text-[11px] text-slate-500">Head of Department (IT)</p>
-              </div>
-            </div>
-
           </div>
 
         </div>
-
       </div>
 
-    </div>
     </div>
   );
 };

@@ -32,7 +32,22 @@ exports.login = async (req, res) => {
     }
 
     const cleanUsername = username.trim();
-    const user = await getOne('SELECT * FROM users WHERE username = ?', [cleanUsername]);
+    let user = await getOne('SELECT * FROM users WHERE username = ?', [cleanUsername]);
+    if (!user) {
+      // Also allow flexible login by email, full name, or first/last name
+      user = await getOne(
+        `SELECT u.* FROM users u 
+         LEFT JOIN faculty_advisors fa ON fa.user_id = u.id 
+         LEFT JOIN students s ON s.user_id = u.id 
+         WHERE u.email = ? 
+            OR LOWER(fa.full_name) = LOWER(?) 
+            OR LOWER(REPLACE(fa.full_name, '.', '')) = LOWER(REPLACE(?, '.', ''))
+            OR LOWER(s.full_name) = LOWER(?)
+            OR LOWER(fa.full_name) LIKE LOWER(CONCAT('%', ?, '%'))
+         LIMIT 1`,
+        [cleanUsername, cleanUsername, cleanUsername, cleanUsername, cleanUsername]
+      );
+    }
 
     // Generic error to prevent username enumeration
     if (!user) {

@@ -1,4 +1,7 @@
 {
+  "name": "svce-smart-nodues-erp",
+  "version": "2.0.0",
+  "description": "SVCE Smart No-Dues ERP System",
   "dependencies": {
     "otplib": "^13.5.0"
   },

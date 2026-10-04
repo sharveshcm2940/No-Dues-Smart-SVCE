@@ -1,6 +1,6 @@
 {
   "name": "college-nodues-backend",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Information Technology Department College No-Dues Backend API",
   "main": "src/server.js",
   "scripts": {
